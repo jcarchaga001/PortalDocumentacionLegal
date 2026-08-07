@@ -1,0 +1,54 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API · puerto 3003",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/api/server.js",
+      "cwd": "${workspaceFolder}/api",
+      "envFile": "${workspaceFolder}/api/.env",
+      "console": "integratedTerminal",
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"],
+      "preLaunchTask": "Comprobar puerto API 3003",
+      "env": {
+        "NODE_ENV": "development",
+        "PORT": "3003",
+        "BASE_PATH": "/DocumentacionLegal"
+      }
+    },
+    {
+      "name": "Web · puerto 3002",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm.cmd",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/web",
+      "console": "integratedTerminal",
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"],
+      "preLaunchTask": "Comprobar puerto Web 3002",
+      "env": {
+        "PORT": "3002",
+        "VITE_BASE_PATH": "/DocumentacionLegal",
+        "VITE_API_BASE_URL": "/DocumentacionLegal/api",
+        "API_PROXY_TARGET": "http://127.0.0.1:3003"
+      },
+      "serverReadyAction": {
+        "pattern": "Local:\\s+(https?://\\S+)",
+        "action": "openExternally"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Portal completo · 3002 + 3003",
+      "configurations": [
+        "API · puerto 3003",
+        "Web · puerto 3002"
+      ],
+      "stopAll": true
+    }
+  ]
+}

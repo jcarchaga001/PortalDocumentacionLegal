@@ -1,0 +1,84 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Comprobar puerto API 3003",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/check-port.ps1",
+        "-Port",
+        "3003"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Comprobar puerto Web 3002",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/check-port.ps1",
+        "-Port",
+        "3002"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Instalar dependencias",
+      "dependsOrder": "parallel",
+      "dependsOn": [
+        "Instalar API",
+        "Instalar Web"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Instalar API",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["install"],
+      "options": { "cwd": "${workspaceFolder}/api" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Instalar Web",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["install"],
+      "options": { "cwd": "${workspaceFolder}/web" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Probar API",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["test"],
+      "options": { "cwd": "${workspaceFolder}/api" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Compilar Web",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "build"],
+      "options": {
+        "cwd": "${workspaceFolder}/web",
+        "env": {
+          "VITE_BASE_PATH": "/DocumentacionLegal",
+          "VITE_API_BASE_URL": "/DocumentacionLegal/api"
+        }
+      },
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

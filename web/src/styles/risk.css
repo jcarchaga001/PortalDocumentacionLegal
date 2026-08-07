@@ -1,0 +1,209 @@
+.legacy-risk-page,
+.legacy-risk-detail-page {
+  width: 100%;
+  color: #272b30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.legacy-risk-title-row,
+.legacy-risk-detail-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  margin-bottom: 18px;
+}
+
+.legacy-risk-title-row h1,
+.legacy-risk-detail-title-row h1 {
+  margin: 0;
+  color: #272b30;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 38px;
+}
+
+.legacy-risk-export.ant-btn {
+  color: #37b24d;
+  font-size: 24px;
+}
+
+.legacy-risk-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 0 18px;
+  margin-bottom: 16px;
+}
+
+.legacy-risk-filters .ant-form-item { margin-bottom: 8px; }
+.legacy-risk-filters .ant-form-item-label { padding-bottom: 4px; }
+.legacy-risk-filters .ant-form-item-label > label {
+  color: #4f575e;
+  font-size: 14px;
+  font-weight: 400;
+}
+.legacy-risk-filters .ant-select { width: 100%; }
+.legacy-risk-filters .ant-select-selector {
+  min-height: 40px;
+  border-radius: 0 !important;
+}
+
+.legacy-risk-alert { margin-bottom: 12px; }
+.legacy-risk-table .ant-table {
+  border: 1px solid #dee2e6;
+  border-radius: 0;
+}
+.legacy-risk-table .ant-table-container { border-radius: 0 !important; }
+.legacy-risk-table .ant-table-thead > tr > th {
+  padding: 13px 18px;
+  border-color: #4a4a4a;
+  color: #f3f6f8;
+  background: #222;
+  font-size: 13px;
+  font-weight: 600;
+}
+.legacy-risk-table .ant-table-thead > tr > th::before { background: #4a4a4a !important; }
+.legacy-risk-table .ant-table-tbody > tr > td {
+  padding: 14px 18px;
+  color: #5f666d;
+  font-size: 13px;
+  vertical-align: middle;
+}
+.legacy-risk-table .ant-table-tbody > tr:hover > td { background: #fff !important; }
+.legacy-risk-critical { color: #c80300 !important; }
+.legacy-risk-detail-link {
+  color: #4d5c66;
+  font-size: 17px;
+}
+
+.legacy-risk-detail-title-row button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0;
+  border: 0;
+  color: #4d5c66;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.legacy-risk-detail-loading {
+  display: grid;
+  min-height: 420px;
+  place-items: center;
+}
+
+.legacy-risk-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(480px, 1fr) minmax(480px, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.legacy-risk-pdf-panel {
+  height: calc(100vh - 210px);
+  min-height: 700px;
+  overflow: hidden;
+  border: 1px solid #dee2e6;
+  background: #fff;
+}
+.legacy-risk-pdf-panel iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.legacy-risk-pdf-empty {
+  display: grid;
+  height: 100%;
+  place-content: center;
+  gap: 12px;
+  color: #8a9298;
+  text-align: center;
+}
+.legacy-risk-pdf-empty .anticon { font-size: 42px; }
+
+.legacy-risk-analysis-panel { min-width: 0; }
+.legacy-risk-score-block {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  min-height: 68px;
+  margin-bottom: 14px;
+  padding: 16px 20px;
+  border: 1px solid #dee2e6;
+  background: #fff;
+}
+.legacy-risk-score-block span {
+  color: #4f575e;
+  font-size: 15px;
+  font-weight: 600;
+}
+.legacy-risk-score-block strong {
+  color: #272b30;
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.legacy-risk-clauses.ant-collapse {
+  border-radius: 0;
+  border-color: #dee2e6;
+  background: #fff;
+}
+.legacy-risk-clauses .ant-collapse-item { border-color: #dee2e6; }
+.legacy-risk-clauses .ant-collapse-header {
+  min-height: 48px;
+  align-items: center !important;
+  border-radius: 0 !important;
+  color: #272b30 !important;
+  font-size: 14px;
+  font-weight: 600;
+}
+.legacy-risk-clauses .ant-collapse-content { border-color: #dee2e6; }
+.legacy-risk-clauses .ant-collapse-content-box { padding: 8px 20px 18px !important; }
+.legacy-risk-clause-fields { display: grid; gap: 12px; }
+.legacy-risk-clause-field {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 16px;
+}
+.legacy-risk-clause-field span {
+  color: #4f575e;
+  font-size: 13px;
+  font-weight: 600;
+}
+.legacy-risk-clause-field p {
+  margin: 0;
+  color: #5f666d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.legacy-risk-comments {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+.legacy-risk-comments section {
+  padding: 18px 20px;
+  border: 1px solid #dee2e6;
+  background: #fff;
+}
+.legacy-risk-comments h2 {
+  margin: 0 0 8px;
+  color: #272b30;
+  font-size: 15px;
+  font-weight: 600;
+}
+.legacy-risk-comments p {
+  margin: 0;
+  color: #5f666d;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1200px) {
+  .legacy-risk-filters { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+  .legacy-risk-detail-grid { grid-template-columns: 1fr; }
+  .legacy-risk-pdf-panel { height: 720px; }
+}

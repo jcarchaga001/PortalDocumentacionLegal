@@ -13,6 +13,7 @@ export function createCatalogRouter(catalogService) {
   router.patch("/users/:id/access", requireUserPermissionManagement, controller.setUserAccess);
 
   router.get("/providers", controller.listProviders);
+  router.get("/providers/:id/destinations", controller.listProviderDestinations);
   router.post("/providers", controller.createProvider);
   router.put("/providers/:id", controller.updateProvider);
 

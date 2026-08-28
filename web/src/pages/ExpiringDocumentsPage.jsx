@@ -13,6 +13,7 @@ import {
   getExpiringDocuments,
   sendDocumentExpirationEmail,
 } from "../services/documentService.js";
+import { EXPIRING_DOCUMENT_EXPORT_COLUMNS } from "./documentExportMappings.js";
 
 const PAGE_SIZE = 50;
 
@@ -66,21 +67,6 @@ function documentColumns(openAttachment, sendEmail, sendingDocumentId) {
   },
   ];
 }
-
-// Orden exacto de ExportarXLSCasos (RecordListToExcel1) en el OML.
-const exportColumns = [
-  { title: "nivelDocumento", key: "nivelDocumento", value: (row) => row.levelName },
-  { title: "usuarioCreacion", key: "usuarioCreacion", value: (row) => row.createdByName },
-  { title: "codInternoSucursal", key: "codInternoSucursal", value: (row) => row.branchCode },
-  { title: "Proveedor", key: "Proveedor", value: () => "" },
-  { title: "fechaVencimiento", key: "fechaVencimiento", value: (row) => row.expirationDate },
-  { title: "fechaContrato", key: "fechaContrato", value: (row) => row.documentDate },
-  { title: "numContrato", key: "numContrato", value: (row) => row.description },
-  { title: "sucursal", key: "sucursal", value: (row) => row.branchOnlyName },
-  { title: "estado", key: "estado", value: (row) => row.statusName },
-  { title: "numRefencia", key: "numRefencia", value: (row) => row.reference },
-  { title: "Categoria", key: "Categoria", value: (row) => row.categoryName },
-];
 
 function requestFilters(values, sorting = {}) {
   const dates = values.dates || [];
@@ -191,7 +177,7 @@ export function ExpiringDocumentsPage() {
           includeInactive: true,
           statusId: 4,
         },
-        columns: exportColumns,
+        columns: EXPIRING_DOCUMENT_EXPORT_COLUMNS,
         fileName: `DocumentaciónLegalHN_PorVencer_${documentExportTimestamp()}.xlsx`,
         sheetName: "Sheet1",
       });

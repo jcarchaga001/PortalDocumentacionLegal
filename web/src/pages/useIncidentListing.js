@@ -11,14 +11,24 @@ const emptyCatalogs = {
   actions: [],
 };
 
-export function useIncidentListing({ catalogScope, initialFilters, loadData }) {
+export function useIncidentListing({
+  catalogScope,
+  initialFilters,
+  initialPageSize = 20,
+  loadData,
+}) {
   const [catalogs, setCatalogs] = useState(emptyCatalogs);
   const [filters, setFilters] = useState(initialFilters);
   const [rows, setRows] = useState([]);
   const [metrics, setMetrics] = useState({});
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pageSize: initialPageSize,
+    total: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState("");
   const requestSequence = useRef(0);
 
   const loadPage = useCallback(async (page, pageSize, query) => {
@@ -36,11 +46,13 @@ export function useIncidentListing({ catalogScope, initialFilters, loadData }) {
         total: data.total || 0,
       });
       setError("");
+      setErrorCode("");
     } else {
       setRows([]);
       setMetrics({});
       setPagination((current) => ({ ...current, current: page, total: 0 }));
       setError(result.message || "No fue posible consultar la información.");
+      setErrorCode(result.error?.code || "");
     }
     setLoading(false);
   }, [loadData]);
@@ -63,6 +75,7 @@ export function useIncidentListing({ catalogScope, initialFilters, loadData }) {
   return {
     catalogs,
     error,
+    errorCode,
     filters,
     loading,
     metrics,
@@ -77,4 +90,3 @@ export function useIncidentListing({ catalogScope, initialFilters, loadData }) {
     },
   };
 }
-

@@ -1,0 +1,291 @@
+.portal-content > .legacy-monitoring-page {
+  min-height: calc(100vh - 56px);
+  margin: -41px -40px -40px;
+  padding: 0 0 20px;
+  overflow-x: hidden;
+  background: #f3f6f8;
+  color: #272b30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters {
+  display: grid;
+  width: calc(100% + 16px);
+  max-width: none;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 -8px 20px;
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters .ant-form-item {
+  min-width: 0;
+  margin: 0;
+  padding: 0 8px;
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters .ant-form-item-label {
+  padding: 0;
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters .ant-form-item-label > label {
+  height: 21px;
+  color: #272b30;
+  font-size: 14px;
+  line-height: 21px;
+  transform: translateY(1px);
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select {
+  --ant-select-height: 40px;
+  --ant-select-border-color: #ced4da;
+  --ant-select-border-radius: 4px;
+  --ant-select-color: #6a7178;
+  position: relative;
+  height: 40px !important;
+  width: 100%;
+  margin-top: 0;
+  padding: 4px 54px 4px 16px !important;
+  border: 1px solid #ced4da !important;
+  border-radius: 4px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  color: #6a7178;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select:hover,
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select.ant-select-focused {
+  border-color: #ced4da !important;
+  box-shadow: none !important;
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select-content,
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select-placeholder,
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select-content-value,
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select-input {
+  color: #495057;
+  font-size: 14px;
+  line-height: 20px !important;
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select-placeholder {
+  color: #6a7178;
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select-suffix {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  width: 14.15625px;
+  height: 22px;
+  color: #6a7178;
+  font-family: FontAwesome;
+  font-size: 22px;
+  line-height: 22px;
+  transform: translateY(-50%);
+}
+
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select-suffix .anticon { display: none; }
+.legacy-monitoring-page .legacy-monitoring-filters .ant-select-suffix::after { content: "\f107"; }
+
+.legacy-monitoring-page .legacy-monitoring-loading {
+  display: flex;
+  min-height: 499px;
+  align-items: center;
+  justify-content: center;
+}
+
+.legacy-monitoring-page > .ant-alert {
+  margin: 0 20px 16px;
+}
+
+.legacy-monitoring-page .legacy-monitoring-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0 20px;
+}
+
+.legacy-monitoring-page .legacy-monitoring-card {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 24px;
+  overflow: visible;
+  border: 0;
+  border-bottom: 1px solid #dee2e6;
+  border-radius: 0;
+  background: #fff;
+  color: #272b30;
+  cursor: default;
+  font: inherit;
+  text-align: center;
+}
+
+.legacy-monitoring-page .legacy-monitoring-card:last-child {
+  border-bottom: 0;
+}
+
+.legacy-monitoring-page .legacy-monitoring-card:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.legacy-monitoring-card-content {
+  width: 100%;
+  text-align: center;
+}
+
+.legacy-monitoring-card-header {
+  min-height: 49px;
+  padding: 5px;
+  border-radius: 5px;
+  background: #ededed;
+  color: #222;
+  font-weight: 400;
+  text-align: left;
+}
+
+.legacy-monitoring-page .legacy-monitoring-branch-code,
+.legacy-monitoring-page .legacy-monitoring-branch-name {
+  display: block;
+  min-height: 0;
+  margin: 0;
+  color: #222;
+  font-weight: 400;
+}
+
+.legacy-monitoring-page .legacy-monitoring-branch-code {
+  display: inline;
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.legacy-monitoring-code-label {
+  display: block;
+  width: 100%;
+  height: 21px;
+  margin: 0;
+  line-height: 21px;
+}
+
+.legacy-monitoring-page .legacy-monitoring-branch-name {
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.legacy-monitoring-chart {
+  margin-top: 5px;
+  cursor: pointer;
+}
+
+.legacy-monitoring-chart:focus-visible {
+  outline: 2px solid #272b30;
+  outline-offset: 2px;
+}
+
+.legacy-monitoring-donut {
+  width: 165px;
+  height: 165px;
+  margin: 0 auto;
+}
+
+.legacy-monitoring-donut svg {
+  display: block;
+  width: 165px;
+  height: 165px;
+  overflow: visible;
+}
+
+.legacy-monitoring-donut circle {
+  fill: none;
+  stroke-width: 30px;
+}
+
+.legacy-monitoring-donut-trail {
+  stroke: #dee2e6;
+}
+
+.legacy-monitoring-donut-progress {
+  stroke-linecap: round;
+}
+
+.legacy-monitoring-percentages {
+  margin-top: 3px;
+  padding: 0;
+  text-align: left;
+}
+
+.legacy-monitoring-registered,
+.legacy-monitoring-expiring {
+  height: 21px;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-monitoring-registered {
+  color: #13b018;
+}
+
+.legacy-monitoring-expiring {
+  color: #d76d03;
+}
+
+.legacy-monitoring-summary {
+  margin-top: 5px;
+  padding: 5px;
+  border-radius: 5px;
+  background: #ededed;
+  color: #272b30;
+  text-align: left;
+}
+
+.legacy-monitoring-summary-title {
+  background: #777;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+  text-align: center;
+}
+
+.legacy-monitoring-summary-title > span {
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-monitoring-summary-line {
+  min-height: 21px;
+  color: #272b30;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+}
+
+.legacy-monitoring-summary-expiring {
+  min-height: 42px;
+}
+
+@media (max-width: 1023px) {
+  .portal-content > .legacy-monitoring-page {
+    margin: -28px -22px;
+  }
+
+  .legacy-monitoring-page .legacy-monitoring-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .portal-content > .legacy-monitoring-page {
+    margin: -24px -15px;
+  }
+
+  .legacy-monitoring-page .legacy-monitoring-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

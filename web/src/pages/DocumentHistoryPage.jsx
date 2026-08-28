@@ -7,13 +7,14 @@ import {
   StopOutlined,
 } from "@ant-design/icons";
 import { Button, Drawer, Form, Input, Modal, Select, Space, Table, Tag, message } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useHistory } from "react-router-dom";
 import { LegacyDateRangePicker } from "../components/LegacyDateRangePicker.jsx";
 import { useAuth } from "../config/AuthContext.jsx";
 import { ROUTES } from "../routes/routePaths.js";
 import { downloadDocumentXlsx, documentExportTimestamp } from "../services/documentExportService.js";
 import { deleteDocument, getDocumentAttachment, getDocumentCatalogs, getDocuments } from "../services/documentService.js";
+import { buildLegacyBranchHistoryFilters } from "./documentHistoryFilters.js";
 
 const PAGE_SIZE = 50;
 
@@ -94,14 +95,9 @@ export function DocumentHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [preview, setPreview] = useState(null);
-  const dateRangeSelected = useRef(false);
   const canDelete = [7, 32].includes(Number(user?.positionCode));
   const todayIso = localTodayIso();
   const initialDateRange = [todayIso, todayIso];
-
-  function withAppliedDateRange(values = {}) {
-    return dateRangeSelected.current ? values : { ...values, dateRange: [] };
-  }
 
   function openDetail(record) {
     history.push(`${ROUTES.documentDetail}?IdRegistro=${record.id}`);
@@ -148,18 +144,8 @@ export function DocumentHistoryPage() {
   async function exportDocuments() {
     setExporting(true);
     try {
-      const values = withAppliedDateRange(form.getFieldsValue());
-      const selectedRange = values.dateRange || [];
       const result = await downloadDocumentXlsx({
-        filters: {
-          branchId: values.branchId,
-          startDate: selectedRange[0] || undefined,
-          endDate: selectedRange[1] || undefined,
-          categoryId: values.categoryId,
-          subcategoryId: values.subcategoryId,
-          statusId: values.statusId,
-          search: values.search,
-        },
+        filters: buildLegacyBranchHistoryFilters(form.getFieldsValue()),
         fileName: `DocumentacionLegalHN_${documentExportTimestamp()}.xlsx`,
         sheetName: "DocumentacionLegalHN",
         columns: [
@@ -186,16 +172,8 @@ export function DocumentHistoryPage() {
 
   async function loadDocuments(values = {}, page = 1, pageSize = pagination.pageSize) {
     setLoading(true);
-    const appliedValues = withAppliedDateRange(values);
-    const selectedRange = appliedValues.dateRange || [];
     const result = await getDocuments({
-      branchId: appliedValues.branchId,
-      startDate: selectedRange[0] || undefined,
-      endDate: selectedRange[1] || undefined,
-      categoryId: appliedValues.categoryId,
-      subcategoryId: appliedValues.subcategoryId,
-      statusId: appliedValues.statusId,
-      search: appliedValues.search,
+      ...buildLegacyBranchHistoryFilters(values),
       page,
       pageSize,
     });
@@ -255,10 +233,7 @@ export function DocumentHistoryPage() {
         layout="vertical"
         className="legacy-history-filters"
         initialValues={{ dateRange: initialDateRange }}
-        onValuesChange={(changedValues, values) => {
-          if (Object.hasOwn(changedValues, "dateRange")) dateRangeSelected.current = true;
-          loadDocuments(values, 1, pagination.pageSize);
-        }}
+        onValuesChange={(_, values) => loadDocuments(values, 1, pagination.pageSize)}
       >
         <Form.Item label="Sucursal" name="branchId"><Select allowClear showSearch placeholder="Seleccione Sucursal" options={options(catalogs.branches)} /></Form.Item>
         <Form.Item label="Fechas" name="dateRange">

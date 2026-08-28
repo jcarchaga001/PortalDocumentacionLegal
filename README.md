@@ -52,6 +52,7 @@ DB_PASSWORD=
 DB_NAME=
 DOCUMENT_DB_NAME=
 PROVIDER_DB_NAME=
+BRANCH_MEDIA_DB_NAME=
 HR_DB_NAME=
 RISK_DB_NAME=
 
@@ -77,6 +78,7 @@ API_PROXY_TARGET=http://127.0.0.1:3003
 | `DB_NAME` | MySQL de personas, credenciales, países, puestos y sucursales. |
 | `DOCUMENT_DB_NAME` | MySQL de documentos, convenios, clientes, incidentes, catálogos y bitácoras. |
 | `PROVIDER_DB_NAME` | MySQL del catálogo de proveedores. |
+| `BRANCH_MEDIA_DB_NAME` | MySQL de `tblSucursalesMultimedia`; si se omite usa `DB_NAME`. |
 | `HR_DB_NAME` | MySQL de empleados y datos auxiliares de casos laborales y convenios. |
 | `RISK_DB_NAME` | MySQL de análisis de riesgo, plantillas, cláusulas y metadatos de archivos. |
 | `AUTH_HASH_URL` | Servicio HTTPS heredado de transformación de credenciales, consumido solo por el API. |

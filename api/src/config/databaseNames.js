@@ -7,10 +7,12 @@ function readDatabaseName(environmentName, fallback) {
 }
 
 export function getDatabaseNames() {
+  const defaultPeopleDatabase = process.env.DB_NAME?.trim() || "dbpqiygwlvvnhg";
   return Object.freeze({
     people: readDatabaseName("DB_NAME", "dbpqiygwlvvnhg"),
     documents: readDatabaseName("DOCUMENT_DB_NAME", "dbaiupyjxopa5m"),
     providers: readDatabaseName("PROVIDER_DB_NAME", "dbTesoreriaDev"),
+    branchMedia: readDatabaseName("BRANCH_MEDIA_DB_NAME", defaultPeopleDatabase),
     humanResources: readDatabaseName("HR_DB_NAME", "dbDevRecursosHumanos"),
     risk: readDatabaseName("RISK_DB_NAME", "dbiptt95dt572b"),
   });

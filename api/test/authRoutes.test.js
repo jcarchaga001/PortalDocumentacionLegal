@@ -6,6 +6,9 @@ import { createApp } from "../src/app.js";
 function dependencies() {
   return {
     authService: {
+      async listCountries() {
+        return [{ countryCode: 4, name: "Honduras" }];
+      },
       async authenticate() {
         return { id: 1, name: "Usuario Seguro", countryCode: 4, roleCode: 7, branchCode: null, positionCode: 15, mustResetPassword: false };
       },
@@ -36,6 +39,7 @@ test("login es publico y los dominios funcionales requieren sesion", async (cont
   const td = await fetch(`${origin}/td/mail/health`);
 
   assert.equal(countries.status, 200);
+  assert.deepEqual((await countries.json()).data, [{ countryCode: 4, name: "Honduras" }]);
   assert.equal(login.status, 200);
   assert.match(login.headers.get("set-cookie"), /HttpOnly/);
   assert.equal(dashboard.status, 401);

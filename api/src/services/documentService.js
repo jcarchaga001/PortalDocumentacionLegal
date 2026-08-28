@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { downloadS3File, uploadFileToS3 } from "./tdS3Service.js";
 
 const ALLOWED_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "bmp"]);
-const MAX_ATTACHMENT_BYTES = 35 * 1024 * 1024;
 const DELETE_POSITION_CODES = new Set([7, 32]);
 
 function positiveInteger(value) {
@@ -97,13 +96,14 @@ function fileExtension(fileName) {
 }
 
 function contentTypeFor(extension) {
+  const normalized = String(extension || "").trim().replace(/^\./, "").toLowerCase();
   return {
     pdf: "application/pdf",
     png: "image/png",
     jpg: "image/jpeg",
     jpeg: "image/jpeg",
     bmp: "image/bmp",
-  }[extension] || "application/octet-stream";
+  }[normalized] || "application/octet-stream";
 }
 
 function normalizeAttachment(payload, { fileNameLimit = 128 } = {}) {
@@ -116,7 +116,7 @@ function normalizeAttachment(payload, { fileNameLimit = 128 } = {}) {
   }
   const extension = fileExtension(fileName);
   if (!ALLOWED_EXTENSIONS.has(extension)) {
-    throw validationError("El formato del documento no es permitido.", "attachment");
+    throw validationError("El formato del documento no es permitido", "attachment");
   }
   const fileBase64 = typeof payload.fileBase64 === "string"
     ? payload.fileBase64.replace(/^data:[^;]+;base64,/, "").replace(/\s/g, "")
@@ -126,9 +126,6 @@ function normalizeAttachment(payload, { fileNameLimit = 128 } = {}) {
   }
   const buffer = Buffer.from(fileBase64, "base64");
   if (!buffer.length) throw validationError("Adjunte el archivo.", "attachment");
-  if (buffer.length > MAX_ATTACHMENT_BYTES) {
-    throw validationError("El archivo excede el tamano permitido.", "attachment");
-  }
   return {
     fileName,
     extension,
@@ -158,18 +155,19 @@ function normalizeDocumentPayload(payload = {}, overrides = {}) {
   const subcategoryId = positiveInteger(overrides.subcategoryId ?? payload.subcategoryId);
   if (!subcategoryId) throw validationError("Seleccione la subcategoria.", "subcategoryId");
 
-  const level = Number(payload.level);
-  if (![1, 2, 3, 4].includes(level)) {
+  const hasLevel = payload.level !== undefined && payload.level !== null && payload.level !== "";
+  const level = hasLevel ? Number(payload.level) : null;
+  if (level !== null && ![1, 2, 3, 4].includes(level)) {
     throw validationError("Seleccione el Nivel Documento.", "level");
   }
 
   const isReferential = parseBoolean(payload.isReferential);
   const documentDate = normalizedDate(payload.documentDate);
   const expirationDate = normalizedDate(payload.expirationDate);
-  if (!isReferential && !documentDate) {
+  if (!documentDate) {
     throw validationError("Ingrese la Fecha de Documento.", "documentDate");
   }
-  if (!isReferential && !expirationDate) {
+  if (!expirationDate) {
     throw validationError("Ingrese la Fecha de vencimiento.", "expirationDate");
   }
 
@@ -225,10 +223,13 @@ async function resolveAttachment(attachment, dependencies) {
   if (attachment.s3Key) {
     const remote = await dependencies.downloadS3File({ s3Key: attachment.s3Key });
     if (remote.success && remote.data?.buffer) {
+      const inferredContentType = contentTypeFor(attachment.extension);
       return {
         buffer: remote.data.buffer,
         fileName: attachment.fileName || attachment.s3Key,
-        contentType: remote.data.contentType || contentTypeFor(attachment.extension),
+        contentType: inferredContentType === "application/octet-stream"
+          ? remote.data.contentType || inferredContentType
+          : inferredContentType,
       };
     }
   }

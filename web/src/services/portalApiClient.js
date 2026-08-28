@@ -25,6 +25,10 @@ function buildApiUrl(path, query) {
   return url;
 }
 
+export function portalApiUrl({ path, query }) {
+  return buildApiUrl(path, query).toString();
+}
+
 export async function portalApiRequest({ path, method = "GET", query, body, responseType = "json" }) {
   try {
     const response = await fetch(buildApiUrl(path, query), {

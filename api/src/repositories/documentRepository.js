@@ -371,8 +371,8 @@ export function createDocumentRepository(pool) {
             document.branchId,
             document.providerId || null,
             document.description,
-            document.isReferential ? null : document.documentDate,
-            document.isReferential ? null : document.expirationDate,
+            document.documentDate,
+            document.expirationDate,
             document.categoryId,
             document.subcategoryId,
             document.level,
@@ -453,13 +453,20 @@ export function createDocumentRepository(pool) {
         `SELECT s.Codigo_Sucursal AS id, s.Codigo_InternoSucursal AS code,
                 s.Nombre_Sucursal AS name, s.DireccionSucursal AS address,
                 ga.Nombre_Personas AS areaManagerName,
-                (SELECT gf.Nombre_Personas
+                 (SELECT gf.Nombre_Personas
+                  FROM ${databases.people}.tblPuestosSucursal ps
+                  INNER JOIN ${databases.people}.tblPersonas gf
+                    ON gf.Codigo_Personas = ps.Codigo_Persona
+                 WHERE ps.Codigo_Sucursal = s.Codigo_Sucursal
+                    AND ps.Codigo_Puesto = 3 AND gf.isActivo = 1
+                  LIMIT 1) AS pharmacyManagerName,
+                (SELECT gf.Correo_electronico
                  FROM ${databases.people}.tblPuestosSucursal ps
                  INNER JOIN ${databases.people}.tblPersonas gf
                    ON gf.Codigo_Personas = ps.Codigo_Persona
                  WHERE ps.Codigo_Sucursal = s.Codigo_Sucursal
                    AND ps.Codigo_Puesto = 3 AND gf.isActivo = 1
-                 LIMIT 1) AS pharmacyManagerName
+                 LIMIT 1) AS pharmacyManagerEmail
          FROM ${databases.people}.tblSucursales s
          LEFT JOIN ${databases.people}.tblPersonas ga ON ga.Codigo_Personas = s.CodGA
          WHERE s.Codigo_Sucursal = ? AND s.Codigo_Pais = ? AND s.isActivo = 1
@@ -467,6 +474,14 @@ export function createDocumentRepository(pool) {
         [branchId, countryCode],
       );
       if (!branchRows[0]) throw branchNotFound();
+
+      const [branchImageRows] = await databasePool.execute(
+        `SELECT filedata AS buffer, ext AS extension, nameData AS fileName
+         FROM ${databases.branchMedia}.tblSucursalesMultimedia
+         WHERE codigoSucursal = ? AND codigoPais = ? AND isActive = 1
+         LIMIT 1`,
+        [branchId, countryCode],
+      );
 
       const [documentRows] = await databasePool.execute(
         `SELECT c.codigoCategoria AS categoryId, c.nombreCategoria AS categoryName,
@@ -481,6 +496,7 @@ export function createDocumentRepository(pool) {
                 st.nombreEstado AS statusName, d.estadoDocumento AS statusId,
                 a.codigoArchivo AS attachmentId, a.nameFile AS attachmentFileName,
                 a.ext AS attachmentExtension,
+                a.CodS3 AS attachmentS3Key,
                 (a.codigoArchivo IS NOT NULL AND a.isActive = 1
                   AND (a.CodS3 IS NOT NULL OR OCTET_LENGTH(a.fileData) > 0)) AS hasAttachment
          FROM ${databases.documents}.tblSubcategoriaDocumentos sc
@@ -498,9 +514,9 @@ export function createDocumentRepository(pool) {
          LEFT JOIN ${databases.documents}.tblEstadoDocumentacion st
            ON st.codigoEstado = d.estadoDocumento AND st.codigoPais = d.codigoPais
          LEFT JOIN ${databases.documents}.tblArchivosDocumentos a ON a.codigoArchivo = d.codigoArchivo
-         WHERE sc.codigoPais = ? AND sc.isActive = 1 AND sc.isDocSucursal = 1
-         ORDER BY c.nombreCategoria, sc.isObligatorio DESC, sc.NombreSubcategoria`,
-        [countryCode, branchId, countryCode],
+         ORDER BY sc.isObligatorio DESC
+         LIMIT 50`,
+        [countryCode, branchId],
       );
 
       const [bookRows] = await databasePool.execute(
@@ -521,7 +537,7 @@ export function createDocumentRepository(pool) {
          LEFT JOIN ${databases.people}.tblPersonas uploader
            ON uploader.Codigo_Personas = evidence.usuarioCarga
          WHERE assignment.codigoPais = ? AND assignment.codigoSucursal = ? AND book.isActive = 1
-         ORDER BY book.nombreLibro, evidence.codigoRegistro DESC`,
+         ORDER BY assignment.codigoLibroxSuc, evidence.fechaRegistro DESC`,
         [countryCode, branchId],
       );
 
@@ -551,7 +567,16 @@ export function createDocumentRepository(pool) {
       }
 
       return {
-        branch: branchRows[0],
+        branch: {
+          ...branchRows[0],
+          image: branchImageRows[0]?.buffer
+            ? {
+                fileBase64: Buffer.from(branchImageRows[0].buffer).toString("base64"),
+                extension: branchImageRows[0].extension || "",
+                fileName: branchImageRows[0].fileName || "",
+              }
+            : null,
+        },
         documents: documentRows.map((row) => ({
           categoryId: Number(row.categoryId),
           categoryName: row.categoryName,
@@ -575,6 +600,7 @@ export function createDocumentRepository(pool) {
                       id: Number(row.attachmentId),
                       fileName: row.attachmentFileName || "",
                       extension: row.attachmentExtension || "",
+                      hasS3: Boolean(row.attachmentS3Key),
                     }
                   : null,
               }

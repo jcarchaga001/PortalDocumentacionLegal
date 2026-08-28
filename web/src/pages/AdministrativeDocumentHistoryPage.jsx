@@ -13,6 +13,7 @@ import {
   getDocumentAttachment,
   getDocumentCatalogs,
 } from "../services/documentService.js";
+import { ADMINISTRATIVE_DOCUMENT_EXPORT_COLUMNS } from "./documentExportMappings.js";
 
 const PAGE_SIZE = 50;
 
@@ -59,21 +60,6 @@ function documentColumns(openDetail, openAttachment) {
   },
   ];
 }
-
-// Orden exacto de ExportarXLSCasos (RecordListToExcel1) en el OML.
-const exportColumns = [
-  { title: "nivelDocumento", key: "nivelDocumento", value: () => "" },
-  { title: "usuarioCreacion", key: "usuarioCreacion", value: () => "" },
-  { title: "codInternoSucursal", key: "codInternoSucursal", value: (row) => row.branchCode },
-  { title: "Proveedor", key: "Proveedor", value: () => "" },
-  { title: "fechaVencimiento", key: "fechaVencimiento", value: (row) => row.expirationDate },
-  { title: "fechaContrato", key: "fechaContrato", value: (row) => row.documentDate },
-  { title: "numContrato", key: "numContrato", value: (row) => row.description },
-  { title: "sucursal", key: "sucursal", value: (row) => row.branchOnlyName },
-  { title: "estado", key: "estado", value: () => "" },
-  { title: "numRefencia", key: "numRefencia", value: (row) => row.reference },
-  { title: "Categoria", key: "Categoria", value: (row) => row.categoryName },
-];
 
 function requestFilters(values, sorting = {}) {
   return {
@@ -170,7 +156,7 @@ export function AdministrativeDocumentHistoryPage() {
           search: values.search,
           documentType: "administrative",
         },
-        columns: exportColumns,
+        columns: ADMINISTRATIVE_DOCUMENT_EXPORT_COLUMNS,
         fileName: `CasosAseguradora_${documentExportTimestamp()}.xlsx`,
         sheetName: "Sheet1",
       });

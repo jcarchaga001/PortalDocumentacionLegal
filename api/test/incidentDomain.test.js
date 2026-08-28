@@ -7,6 +7,7 @@ import {
   normalizeIncidentInput,
   normalizeIncidentActionFilters,
   normalizeIncidentFilters,
+  normalizeLaborActionUpdate,
   normalizeLaborCaseUpdate,
   normalizeLaborCaseFilters,
 } from "../src/services/incidentService.js";
@@ -68,6 +69,75 @@ test("catalogo de acciones conserva el incidente para resolver responsables lega
     countryCode: 4,
     filters: { branchId: undefined, incidentId: 318 },
   });
+});
+
+test("acepta el catalogo independiente de la superficie laboral OLD", async () => {
+  let received;
+  const service = createIncidentService({
+    getCatalogs(scope, countryCode, filters) {
+      received = { scope, countryCode, filters };
+      return {};
+    },
+  });
+
+  await service.catalogs("labor-actions-legacy", 4, { incidentId: "318" });
+
+  assert.deepEqual(received, {
+    scope: "labor-actions-legacy",
+    countryCode: 4,
+    filters: { branchId: undefined, incidentId: 318 },
+  });
+});
+
+test("catalogo laboral vigente une al solicitante con responsables RRHH activos", async () => {
+  const calls = [];
+  const repository = createIncidentRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      if (/SELECT i\.codigoSolicitante AS applicantId/.test(sql)) {
+        return [[{ applicantId: 901 }], []];
+      }
+      if (/WHERE p\.CodigoPais = \? AND p\.Codigo_Personas = \?\s+UNION/.test(sql)) {
+        return [[{ id: 901, name: "Solicitante" }, { id: 902, name: "Legal" }], []];
+      }
+      if (/ua\.codigoPais = \? AND ua\.isRRHH = 1 AND ua\.isActive = 1/.test(sql)) {
+        return [[{ id: 902, name: "Legal" }], []];
+      }
+      return [[], []];
+    },
+  });
+
+  const catalogs = await repository.getCatalogs("labor-actions", 4, { incidentId: 318 });
+
+  const actionResponsibleCall = calls.find(({ sql }) => /p\.Codigo_Personas = \?\s+UNION/.test(sql));
+  assert.ok(actionResponsibleCall);
+  assert.deepEqual(actionResponsibleCall.parameters, [4, 901, 4]);
+  assert.deepEqual(catalogs.responsiblePeople.map(({ id }) => id), [901, 902]);
+  assert.deepEqual(catalogs.legalResponsiblePeople.map(({ id }) => id), [902]);
+});
+
+test("catalogo laboral OLD conserva GetResponsables sin mezclar el contrato vigente", async () => {
+  const calls = [];
+  const repository = createIncidentRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      if (/LEFT JOIN .*tblPersonas p ON p\.Codigo_Personas = ua\.codigoUsuario/.test(sql)
+          && /WHERE ua\.isRRHH = 1/.test(sql)) {
+        return [[{ id: 903, name: "Responsable OLD" }], []];
+      }
+      return [[], []];
+    },
+  });
+
+  const catalogs = await repository.getCatalogs("labor-actions-legacy", 4, { incidentId: 318 });
+
+  const oldResponsibleCall = calls.find(({ sql }) => /LEFT JOIN .*tblPersonas p/.test(sql)
+    && /WHERE ua\.isRRHH = 1/.test(sql));
+  assert.ok(oldResponsibleCall);
+  assert.match(oldResponsibleCall.sql, /LIMIT 50/);
+  assert.doesNotMatch(oldResponsibleCall.sql, /ua\.isActive|p\.isActivo/);
+  assert.deepEqual(oldResponsibleCall.parameters, [4]);
+  assert.deepEqual(catalogs.responsiblePeople.map(({ id }) => id), [903]);
 });
 
 test("responsables de incidente unen personas de sucursal y autorizados por tipo", async () => {
@@ -171,10 +241,39 @@ test("mis acciones laborales respeta el usuario autenticado y el administrador l
 
   await repository.listLaborActions(4, 99, { page: 1, pageSize: 20 });
   assert.ok(calls.some(({ sql, parameters }) => /a\.responsable = \?/.test(sql) && parameters.includes(99)));
+  const userListQuery = calls.find(({ sql }) => /LIMIT 20 OFFSET 0/.test(sql));
+  assert.match(userListQuery.sql, /a\.responsable AS responsibleId/);
+  assert.match(userListQuery.sql, /actionType\.NombreAccion AS actionName/);
 
   calls.length = 0;
   await repository.listLaborActions(4, 1, { page: 1, pageSize: 20 });
   assert.ok(calls.some(({ sql, parameters }) => /a\.isActive = 1/.test(sql) && !parameters.includes(1)));
+});
+
+test("catalogos del listado de acciones laborales conservan las fuentes OML sin filtros activos agregados", async () => {
+  const calls = [];
+  const repository = createIncidentRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      return [[], []];
+    },
+  });
+
+  await repository.getCatalogs("labor-actions", 4, {});
+
+  const statuses = calls.find(({ sql }) => /SELECT codigoEstado AS id, nombreEstado AS name/.test(sql));
+  const actions = calls.find(({ sql }) => /SELECT codAccion AS id, NombreAccion AS name/.test(sql));
+  assert.match(statuses.sql, /tblEstadosIncidentes\b/);
+  assert.doesNotMatch(statuses.sql, /tblEstadosIncidentes_Legal|WHERE isActive/);
+  assert.doesNotMatch(actions.sql, /WHERE IsActivo/);
+});
+
+test("anular una accion laboral no exige una justificacion que el flujo OML no solicita", () => {
+  assert.deepEqual(normalizeLaborActionUpdate({ operation: "cancel" }), { operation: "cancel" });
+  assert.throws(
+    () => normalizeActionUpdate({ operation: "cancel" }),
+    (error) => error.code === "VALIDATION_ERROR" && error.field === "justification",
+  );
 });
 
 function actionMutationHarness({
@@ -295,6 +394,21 @@ function laborCaseMutationHarness({ statusId = 2, requiresEvidence = 0, openActi
 function hasWrite(events) {
   return events.some((event) => event?.sql && /^\s*(?:INSERT|UPDATE|DELETE)\s/i.test(event.sql));
 }
+
+test("anular una accion laboral actualiza solo el estado sin enlazar una justificacion inexistente", async () => {
+  const { repository, events } = actionMutationHarness({ labor: true, responsibleId: 460 });
+
+  await repository.updateLaborAction(4, 460, 77, normalizeLaborActionUpdate({ operation: "cancel" }));
+
+  const cancellation = events.find((event) => /SET codigoEstado = 3/.test(event?.sql || ""));
+  assert.ok(cancellation);
+  assert.doesNotMatch(cancellation.sql, /Justificación/);
+  assert.deepEqual(cancellation.parameters, [77]);
+  assert.deepEqual(
+    events.filter((event) => typeof event === "string"),
+    ["begin", "commit", "release"],
+  );
+});
 
 test("incidentes y casos cerrados no aceptan nuevas acciones ni un segundo cierre", async () => {
   const attempts = [
@@ -454,6 +568,30 @@ test("acciones ajenas de incidentes y casos laborales devuelven 403 sin UPDATE",
 
     await assert.rejects(mutation, (error) => error.code === "FORBIDDEN" && error.status === 403);
     assert.equal(events.some((event) => event?.sql && /^\s*UPDATE\s/i.test(event.sql)), false);
+    assert.deepEqual(
+      events.filter((event) => typeof event === "string"),
+      ["begin", "rollback", "release"],
+    );
+  }
+});
+
+test("un usuario ajeno no puede iniciar, cerrar ni anular una accion laboral", async () => {
+  for (const update of [
+    { operation: "start" },
+    { operation: "close", justification: "No autorizado", includeEvidence: false },
+    { operation: "cancel", justification: "No autorizado" },
+  ]) {
+    const { repository, events } = actionMutationHarness({
+      labor: true,
+      responsibleId: 460,
+      statusId: 1,
+    });
+
+    await assert.rejects(
+      () => repository.updateLaborAction(4, 99, 77, update),
+      (error) => error.code === "FORBIDDEN" && error.status === 403,
+    );
+    assert.equal(hasWrite(events), false);
     assert.deepEqual(
       events.filter((event) => typeof event === "string"),
       ["begin", "rollback", "release"],

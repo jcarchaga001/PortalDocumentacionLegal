@@ -92,8 +92,8 @@ export function CorporateClientBulkPage() {
       <section className="legacy-bulk-upload">
         <span>Excel a Cargar</span>
         <Space>
-          <Upload accept=".xlsx" maxCount={1} showUploadList={false} beforeUpload={readFile}>
-            <Button icon={<PaperClipOutlined />}>{file?.name || "Seleccione un archivo..."}</Button>
+          <Upload maxCount={1} showUploadList={false} beforeUpload={readFile}>
+            <Button icon={<PaperClipOutlined />}>{file?.name || "Seleccione un archivo.."}</Button>
           </Upload>
           <Button type="primary" icon={<UploadOutlined />} loading={loading} disabled={hasInvalidRows} onClick={upload}>Subir</Button>
         </Space>

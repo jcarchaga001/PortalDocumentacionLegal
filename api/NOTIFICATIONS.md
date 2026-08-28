@@ -28,13 +28,16 @@ La consulta usa:
 - `dbaiupyjxopa5m.tblSubcategoriaDocumentos`
 - `dbpqiygwlvvnhg.tblSucursales`
 
-Comportamiento recuperado:
+Comportamiento recuperado del flujo **conectado**:
 
-1. Documentos no referenciales con `fechaVencimiento < hoy`, estado `2` o `4` y sin `mailVencido` pasan a estado `5`, marcan `mailVencido = 1` y generan `emNotificacionLegalVencido`.
-2. Documentos no referenciales con estado `2`, desde hoy y antes de `AddMonths(hoy, 3)`, pasan a estado `4` y generan `emNotificacionLegal`.
-3. Los documentos procesados se agrupan en `emNotificacionAreaLegal`, con sucursal, categoría, subcategoría, documento, referencia, vencimiento y estado.
+1. `GetTblDocumentoesByFechaVencimiento` se ejecuta primero. Selecciona documentos no referenciales con estado `2` y `fechaVencimiento < AddMonths(hoy, 3)`, sin límite inferior, ordenados por `referenciaDocumento`. Cada registro pasa a estado `4`, actualiza `fechaUltimaActualizacion` y genera `emNotificacionLegal`.
+2. `GetTblDocumentoesByVencido` se ejecuta después de esas actualizaciones. Selecciona documentos no referenciales con estado `2` o `4` y `fechaVencimiento < hoy`, también ordenados por `referenciaDocumento`. Cada registro pasa a estado `5`, marca `mailVencido = 1`, actualiza `fechaUltimaActualizacion` y genera `emNotificacionLegalVencido`.
+3. Por no existir límite `>= hoy` en la primera consulta, un documento ya vencido que todavía esté en estado `2` recorre `2 -> 4 -> 5` y genera ambos avisos en la misma ejecución. `candidates` cuenta transiciones, no documentos únicos.
+4. El resumen `emNotificacionAreaLegal` se envía únicamente cuando **ambas** listas tienen registros. La condición OML es `GetTblDocumentoesByFechaVencimiento.List.Empty or GetTblDocumentoesByVencido.List.Empty`; cuando resulta verdadera, el flujo termina sin resumen.
 
-La reclamación de cada registro es condicional. Una segunda ejecución no vuelve a enviar documentos que ya cambiaron de estado. Si TD rechaza el envío individual, el estado reclamado se revierte para permitir reintento.
+El OML contiene otra cadena casi idéntica con consultas y acciones terminadas en `2`, pero su nodo inicial `FechaLocal` no tiene conector entrante desde el `Start`. Es una rama huérfana y el runner no la ejecuta por segunda vez.
+
+`mailVencido` no forma parte del filtro legacy: la idempotencia observable depende del estado final `5`. La réplica reclama cada transición con un `UPDATE` condicional para que dos runners no envíen la misma fase. Si TD rechaza un envío individual, restaura el estado, `mailVencido` y la fecha previa sólo si el registro conserva la marca de esa reclamación, permitiendo reintento sin sobrescribir una transición concurrente.
 
 El OML también contiene la acción pública `ConveniosAVencer`, aunque no es un `Process` de OutSystems. Se replica como trabajo programable: selecciona convenios no indefinidos, no reportados y con vencimiento entre hoy y 29 días; después del reclamo marca `isReportado = 1` y envía un único resumen.
 
@@ -49,8 +52,8 @@ npm.cmd run notifications:dry-run -- --process=document-expirations
 # Fecha de corte reproducible, todavía sin cambios.
 npm.cmd run notifications:dry-run -- --process=all --date=2026-08-06
 
-# Ejecución efectiva: además requiere NOTIFICATION_LIVE_ENABLED=true.
-npm.cmd run notifications:run -- --process=document-expirations
+# Ejecución efectiva: además requiere NOTIFICATION_LIVE_ENABLED=true y corte explícito.
+npm.cmd run notifications:run -- --process=document-expirations --date=2026-08-28
 ```
 
 El modo predeterminado del CLI y de todos los endpoints de envío, workflow y procesos es `dry-run`. La ejecución efectiva requiere `--commit` en CLI o `{"dryRun": false}` en API.
@@ -72,7 +75,7 @@ POST /DocumentacionLegal/api/notifications/processes/document-expirations/run
 Content-Type: application/json
 X-Notification-Run-Token: <secreto-de-al-menos-32-bytes>
 
-{"dryRun": false}
+{"dryRun": false, "asOf": "2026-08-28"}
 ```
 
 El token no se acepta en query string ni se registra. El CLI es una vía local/servidor: no usa el token HTTP, pero exige simultáneamente `NOTIFICATION_LIVE_ENABLED=true` y `--commit`.
@@ -81,20 +84,33 @@ El botón `Enviar Correo` de `scrProximosVencer` usa la misma guardia. El proxy 
 
 ## Programación
 
-El OML conserva `CurrDateTime()` como activación de la actividad, pero no incluye una agenda exportable. Una agenda equivalente recomendada es diaria, fuera del horario de mayor uso.
+El proceso es público, tiene `EventTrigger = None` y la actividad usa `CurrDateTime()` como instante de activación: se ejecuta inmediatamente cuando alguien llama `LaunchprcVerificarProximoVencer`. El módulo no contiene una llamada a ese launcher ni una agenda exportable. La frecuencia real depende de una configuración externa que no está en el OML.
+
+La lógica usa `CurrDate()` y el artefacto no declara una zona horaria. Por tanto, la zona del ambiente OutSystems y su calendario operativo quedan pendientes de evidencia de plataforma. El `dry-run` puede usar la fecha local del host; una ejecución live exige `asOf`/`--date=YYYY-MM-DD` explícito para no decidir el día por la zona del proceso Node. Una agenda diaria fuera del horario de mayor uso es sólo una recomendación operativa, no una propiedad recuperada del legacy.
 
 En Windows Task Scheduler:
 
 - Programa: `npm.cmd`
-- Argumentos: `run notifications:run -- --process=document-expirations`
+- Argumentos: `run notifications:run -- --process=document-expirations --date=YYYY-MM-DD`, sustituyendo la fecha mediante un wrapper que use la zona operativa autorizada.
 - Iniciar en: la ruta absoluta de `DocumentacionLegal\api`
 - Frecuencia sugerida: diaria a las 06:00
 
 Para convenios puede crearse una segunda tarea diaria con `--process=agreement-expirations`. En Linux/cron, el comando equivalente es:
 
 ```cron
-0 6 * * * cd /ruta/DocumentacionLegal/api && /usr/bin/npm run notifications:run -- --process=document-expirations
+# El wrapper debe calcular --date en la zona operativa confirmada.
+0 6 * * * cd /ruta/DocumentacionLegal/api && /ruta/wrapper-fecha-autorizada
 ```
+
+### Concurrencia, idempotencia y errores
+
+- Un mutex de servicio y un advisory lock MySQL con nombre estable abarcan las dos fases y el resumen. Una segunda ejecución cooperante recibe `409 NOTIFICATION_PROCESS_ALREADY_RUNNING`; esto evita resúmenes parciales duplicados entre API/CLI o instancias que usan la misma base.
+- Las transiciones `2 -> 4` y `(2|4) -> 5` incluyen estado, fecha límite y `isReferencial` en el `WHERE` como defensa adicional.
+- Una segunda ejecución después del estado `5` no vuelve a seleccionar el documento.
+- Un rechazo individual de TD libera únicamente la reclamación de esa fase y queda identificado en `failures` con `kind`, `code` y `released`.
+- El resumen se intenta después de los avisos individuales. No existe una tabla/outbox recuperada para reintentar solamente un resumen fallido; liberar todos los documentos causaría duplicados individuales. `summaryFailures` lo hace visible, pero su reintento durable permanece bloqueado hasta obtener un contrato de persistencia autorizado.
+- Una caída abrupta después del `UPDATE` y antes de enviar/capturar el error puede dejar la transición final sin correo. El lock evita concurrencia, pero no sustituye un outbox/lease durable; por eso live continúa deshabilitado por omisión y no debe habilitarse hasta cerrar este riesgo en UAT/arquitectura.
+- La actividad no contiene un manejador de excepción explícito. Los reintentos implícitos de la plataforma OutSystems no pueden inferirse del OML exportado.
 
 ## API autenticada
 

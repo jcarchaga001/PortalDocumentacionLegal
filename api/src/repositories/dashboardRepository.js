@@ -56,7 +56,7 @@ export function createDashboardRepository(pool) {
     WITH required AS (
       SELECT COUNT(*) AS required_count
       FROM ${databases.documents}.tblSubcategoriaDocumentos
-      WHERE codigoPais = ? AND isObligatorio = 1
+      WHERE isObligatorio = 1
     )
     SELECT
       s.Codigo_Sucursal AS branch_id,
@@ -97,11 +97,9 @@ export function createDashboardRepository(pool) {
     LEFT JOIN ${databases.people}.tblPersonas ga ON ga.Codigo_Personas = s.CodGA
     LEFT JOIN ${databases.documents}.tblDocumentos d
       ON d.codigoSucursal = s.Codigo_Sucursal
-     AND d.codigoPais = ?
     LEFT JOIN ${databases.documents}.tblSubcategoriaDocumentos sc
       ON sc.codigoSubcategoria = d.subCategoriaDocumento
      AND sc.codigoCategoria = d.categoriaDocumento
-     AND sc.codigoPais = ?
     WHERE s.Codigo_Pais = ?
       AND (s.isAdministrativa = 0 OR s.Codigo_InternoSucursal = 'FA00')
       AND s.isActivo = 1
@@ -131,9 +129,6 @@ export function createDashboardRepository(pool) {
       const branchId = filters.branchId || null;
       const [rows] = await databasePool.execute(monitoringQuery, [
         countryCode,
-        countryCode,
-        countryCode,
-        countryCode,
         managerId,
         managerId,
         branchId,
@@ -148,19 +143,19 @@ export function createDashboardRepository(pool) {
         databasePool.execute(
           `SELECT Codigo_Personas AS id, Nombre_Personas AS name
            FROM ${databases.people}.tblPersonas
-           WHERE CodigoPais = ? AND Codigo_Puesto = 2 AND isActivo = 1
-           ORDER BY Nombre_Personas`,
+           WHERE CodigoPais = ? AND Codigo_Puesto = 2
+           ORDER BY Codigo_Personas
+           LIMIT 250`,
           [countryCode],
         ),
         databasePool.execute(
           `SELECT Codigo_Sucursal AS id,
-                  CONCAT(Codigo_InternoSucursal, ' - ', Nombre_Sucursal) AS name,
+                  CONCAT(Codigo_InternoSucursal, '-', Nombre_Sucursal) AS name,
                   CodGA AS managerId
            FROM ${databases.people}.tblSucursales
            WHERE Codigo_Pais = ?
-             AND (isAdministrativa = 0 OR Codigo_InternoSucursal = 'FA00')
-             AND isActivo = 1
-           ORDER BY OrdenSucursal, Codigo_InternoSucursal
+             AND (isAdministrativa = 0 OR Codigo_Sucursal = 135)
+           ORDER BY Codigo_Sucursal
            LIMIT 250`,
           [countryCode],
         ),

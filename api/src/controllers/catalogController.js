@@ -38,6 +38,15 @@ export function createCatalogController(catalogService) {
       }
     },
 
+    async listProviderDestinations(req, res, next) {
+      try {
+        const data = await catalogService.listProviderDestinations(req.auth.countryCode, req.params.id);
+        res.json(normalizedSuccess("Destinos de proveedor consultados correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+
     async createProvider(req, res, next) {
       try {
         const data = await catalogService.createProvider(req.auth, req.body);

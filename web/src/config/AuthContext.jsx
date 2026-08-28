@@ -1,4 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  clearLegacyDocumentContext,
+  resetLegacyDocumentContextForLogin,
+  restoreLegacyDocumentContextForCountry,
+} from "./legacyDocumentContext.js";
 import * as authService from "../services/authService.js";
 
 const AuthContext = createContext(null);
@@ -10,6 +15,9 @@ export function AuthProvider({ children }) {
   const refreshSession = useCallback(async () => {
     setLoading(true);
     const result = await authService.getCurrentUser();
+    if (result.success) {
+      restoreLegacyDocumentContextForCountry(result.data?.countryCode);
+    }
     setUser(result.success ? result.data : null);
     setLoading(false);
     return result;
@@ -21,12 +29,16 @@ export function AuthProvider({ children }) {
 
   const signIn = useCallback(async (credentials) => {
     const result = await authService.login(credentials);
-    if (result.success) setUser(result.data);
+    if (result.success) {
+      resetLegacyDocumentContextForLogin(result.data?.countryCode);
+      setUser(result.data);
+    }
     return result;
   }, []);
 
   const signOut = useCallback(async () => {
     await authService.logout();
+    clearLegacyDocumentContext();
     setUser(null);
   }, []);
 

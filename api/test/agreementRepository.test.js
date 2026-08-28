@@ -109,6 +109,19 @@ test("normalizacion de convenios limita filtros y valida fechas y pagare", () =>
   });
   assert.deepEqual(normalized.removedAttachmentIds, [9, 12]);
   assert.deepEqual(normalized.attachments, []);
+
+  const normalizedWithAttachment = normalizeAgreementPayload({
+    clientId: 1,
+    startDate: "2026-08-06",
+    endDate: "2026-08-07",
+    creditDays: 30,
+    creditLimit: 100,
+    hasPromissoryNote: false,
+    branchIds: [1],
+    accountManagerCode: "1379",
+    attachments: [{ s3Key: "archivo.pdf", fileName: "Archivo.pdf", extension: ".pdf" }],
+  });
+  assert.equal(normalizedWithAttachment.attachments[0].extension, ".pdf");
 });
 
 test("convenio con pagare exige adjunto antes de llamar al repositorio", async () => {

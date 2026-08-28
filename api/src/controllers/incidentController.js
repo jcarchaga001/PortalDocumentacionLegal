@@ -1,6 +1,22 @@
-import { normalizedSuccess } from "../services/serviceResult.js";
+import { normalizedFailure, normalizedSuccess } from "../services/serviceResult.js";
 
-export function createIncidentController(incidentService) {
+const INCIDENT_ACTION_QUERY_ERROR = "INCIDENT_ACTION_QUERY_ERROR";
+const databaseConnectionErrorCodes = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+]);
+
+function isDatabaseQueryFailure(error) {
+  const code = String(error?.code || "");
+  return Boolean(error?.sqlState)
+    || code.startsWith("ER_")
+    || code.startsWith("PROTOCOL_")
+    || databaseConnectionErrorCodes.has(code);
+}
+
+export function createIncidentController(incidentService, { logError = console.error } = {}) {
   return {
     async catalogs(req, res, next) {
       try {
@@ -25,6 +41,17 @@ export function createIncidentController(incidentService) {
         const data = await incidentService.listActions(req.params.scope, req.auth.countryCode, req.query);
         res.json(normalizedSuccess("Acciones de incidentes consultadas correctamente.", data));
       } catch (error) {
+        if (isDatabaseQueryFailure(error)) {
+          logError("Incident action query failed.", {
+            code: error.code || null,
+            errno: error.errno || null,
+            sqlState: error.sqlState || null,
+          });
+          res.status(500).json(normalizedFailure("Error executing query.", {
+            code: INCIDENT_ACTION_QUERY_ERROR,
+          }));
+          return;
+        }
         next(error);
       }
     },

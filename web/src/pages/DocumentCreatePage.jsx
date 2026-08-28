@@ -2,6 +2,8 @@ import { LeftCircleOutlined } from "@ant-design/icons";
 import { Button, Checkbox, DatePicker, Form, Input, Radio, Select, Upload, message } from "antd";
 import { useEffect, useState } from "react";
 import { useHistory } from "react-router-dom";
+import { validateLegacyDocumentFileName } from "../config/legacyFileContracts.js";
+import { readLegacyDocumentType, writeLegacyDocumentType } from "../config/legacyDocumentContext.js";
 import { ROUTES } from "../routes/routePaths.js";
 import { createDocument, getDocumentCatalogs } from "../services/documentService.js";
 import { fileToBase64 } from "../services/fileHelpers.js";
@@ -9,7 +11,7 @@ import { fileToBase64 } from "../services/fileHelpers.js";
 export function DocumentCreatePage() {
   const history = useHistory();
   const [form] = Form.useForm();
-  const [documentType, setDocumentType] = useState();
+  const [documentType, setDocumentType] = useState(() => readLegacyDocumentType());
   const [catalogs, setCatalogs] = useState({ branches: [], administrativeBranches: [], providers: [], categories: [], subcategories: [] });
   const [saving, setSaving] = useState(false);
   const selectedCategoryId = Form.useWatch("categoryId", form);
@@ -34,6 +36,11 @@ export function DocumentCreatePage() {
     setSaving(true);
     try {
       const file = values.attachment?.[0]?.originFileObj;
+      const fileValidation = file ? validateLegacyDocumentFileName(file.name) : null;
+      if (fileValidation && !fileValidation.valid) {
+        message.error(fileValidation.message);
+        return;
+      }
       const result = await createDocument({
         ...values,
         documentDate: values.documentDate?.format("YYYY-MM-DD"),
@@ -71,10 +78,13 @@ export function DocumentCreatePage() {
         form={form}
         layout="vertical"
         className="legacy-create-form"
-        initialValues={{ level: 1, isReferential: false }}
+        initialValues={{ level: 1, isReferential: false, documentType }}
         onFinish={handleSubmit}
         onValuesChange={(changed) => {
-          if (Object.prototype.hasOwnProperty.call(changed, "documentType")) setDocumentType(changed.documentType);
+          if (Object.prototype.hasOwnProperty.call(changed, "documentType")) {
+            setDocumentType(changed.documentType);
+            writeLegacyDocumentType(changed.documentType);
+          }
           if (changed.categoryId) form.setFieldValue("subcategoryId", undefined);
           if (changed.isReferential) {
             form.setFieldsValue({ documentDate: undefined, expirationDate: undefined });
@@ -159,7 +169,7 @@ export function DocumentCreatePage() {
             getValueFromEvent={(event) => Array.isArray(event) ? event : event?.fileList}
             rules={[{ required: true, message: "Adjunte el archivo." }]}
           >
-            <Upload beforeUpload={() => false} maxCount={1} accept=".pdf,.jpg,.jpeg,.png,.bmp">
+            <Upload beforeUpload={() => false} maxCount={1}>
               <Button>Adjunte Archivo</Button>
             </Upload>
           </Form.Item>

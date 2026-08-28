@@ -60,7 +60,7 @@ export function DocumentCategoriesPage() {
         onValuesChange={(_, values) => listing.setFilters(values)}
       >
         <Form.Item label="Categoría:" name="categoryId">
-          <Select allowClear showSearch optionFilterProp="label" placeholder="Seleccione Categoría" options={options(lookups.categories)} />
+          <Select allowClear showSearch optionFilterProp="label" placeholder="Seleccionar..." options={options(lookups.categories)} />
         </Form.Item>
         <Form.Item label="Buscar:" name="search"><Input allowClear /></Form.Item>
         <Form.Item className="legacy-catalog-check" name="onlyRequired" valuePropName="checked"><Checkbox>Solo Obligatorios</Checkbox></Form.Item>

@@ -37,6 +37,7 @@ import {
 } from "../services/incidentService.js";
 import { downloadS3File } from "../services/tdS3Service.js";
 import { options, StatusTag } from "./IncidentUi.jsx";
+import { getLaborCaseSurface } from "./laborCaseSurface.js";
 
 function requestFromSearch(search) {
   const query = new URLSearchParams(search);
@@ -68,9 +69,16 @@ export function LaborCaseDetailPage({ legacy = false }) {
   const history = useHistory();
   const location = useLocation();
   const { user } = useAuth();
+  const surface = getLaborCaseSurface(legacy);
   const request = useMemo(() => requestFromSearch(location.search), [location.search]);
   const [data, setData] = useState(null);
-  const [catalogs, setCatalogs] = useState({ actions: [], responsiblePeople: [], levels: [], priorities: [] });
+  const [catalogs, setCatalogs] = useState({
+    actions: [],
+    responsiblePeople: [],
+    legalResponsiblePeople: [],
+    levels: [],
+    priorities: [],
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -101,7 +109,7 @@ export function LaborCaseDetailPage({ legacy = false }) {
     setError("");
     const [detailResult, catalogResult] = await Promise.all([
       getLaborCase(request.caseId),
-      getIncidentCatalogs("labor-actions"),
+      getIncidentCatalogs(surface.catalogScope, { incidentId: request.caseId }),
     ]);
     if (detailResult.success) {
       setData(detailResult.data);
@@ -112,7 +120,7 @@ export function LaborCaseDetailPage({ legacy = false }) {
     } else setError(detailResult.message || "No fue posible consultar el caso laboral.");
     if (catalogResult.success) setCatalogs(catalogResult.data || {});
     setLoading(false);
-  }, [request.actionId, request.caseId]);
+  }, [request.actionId, request.caseId, surface.catalogScope]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -324,10 +332,10 @@ export function LaborCaseDetailPage({ legacy = false }) {
         <>
           <div className="legacy-incident-detail-card legacy-labor-detail-card">
             <div className="legacy-incident-reference-row">
-              <div><strong>N°: {data.incidentNumber}</strong>{!legacy && <span>{data.registrationDate}</span>}</div>
+              <div><strong>N°: {data.incidentNumber}</strong>{surface.showRegistrationDate && <span>{data.registrationDate}</span>}</div>
               <StatusTag id={data.statusId} name={data.statusName} />
             </div>
-            {legacy ? (
+            {!surface.showCurrentCaseFields ? (
               <>
                 <div className="legacy-incident-detail-grid legacy-labor-secondary-grid">
                   <CaseField label="Sucursal" value={data.branchName} />
@@ -360,7 +368,7 @@ export function LaborCaseDetailPage({ legacy = false }) {
             )}
             <div className="legacy-labor-comment-label">Comentario del Solicitante</div>
             <div className="legacy-incident-long-field legacy-labor-comment-field"><p>{data.applicantComment}</p></div>
-            {!legacy && (
+            {surface.showResponsibleEditor && (
               <div className="legacy-incident-detail-grid legacy-labor-edit-grid">
                 <CaseField label="Responsable Legal" value={data.responsibleName} onEdit={() => openCaseOperation("responsible")} />
                 <CaseField label="Nivel de Seguridad" value={data.securityLevelName || "No asignado"} onEdit={() => openCaseOperation("security")} />
@@ -369,7 +377,7 @@ export function LaborCaseDetailPage({ legacy = false }) {
             )}
           </div>
 
-          {!legacy && (
+          {surface.showCaseThread && (
             <div className="legacy-labor-thread-link">
               <Button type="text" icon={<CommentOutlined />} onClick={() => setTimelineOpen(true)}>{data.history?.length || 0}</Button>
             </div>
@@ -403,7 +411,7 @@ export function LaborCaseDetailPage({ legacy = false }) {
           </div>
           {Number(data.statusId) !== 5 && (
             <div className="legacy-form-actions legacy-incident-close-actions">
-              {!legacy && <Button onClick={() => openCaseOperation("pending")}>Caso pendiente de información</Button>}
+              {surface.allowPendingInformation && <Button onClick={() => openCaseOperation("pending")}>Caso pendiente de información</Button>}
               <Button danger onClick={() => openCaseOperation("close")}>Cerrar Caso</Button>
             </div>
           )}
@@ -462,7 +470,7 @@ export function LaborCaseDetailPage({ legacy = false }) {
         confirmLoading={saving}
       >
         <Form form={caseForm} layout="vertical">
-          {caseOperation === "responsible" && <Form.Item name="responsibleId" label="Responsable Legal*" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={options(catalogs.responsiblePeople)} /></Form.Item>}
+          {caseOperation === "responsible" && <Form.Item name="responsibleId" label="Responsable Legal*" rules={[{ required: true }]}><Select showSearch optionFilterProp="label" options={options(catalogs.legalResponsiblePeople)} /></Form.Item>}
           {caseOperation === "security" && <Form.Item name="levelId" label="Nivel de Seguridad*" rules={[{ required: true }]}><Select options={options(catalogs.levels)} /></Form.Item>}
           {caseOperation === "priority" && <Form.Item name="priorityId" label="Nivel Prioridad*" rules={[{ required: true }]}><Select options={options(catalogs.priorities)} /></Form.Item>}
           {["pending", "close"].includes(caseOperation) && <Form.Item name="justification" label="Justificación cambio estado*" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={4} /></Form.Item>}

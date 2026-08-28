@@ -1,0 +1,74 @@
+.legacy-action-reference {
+  height: auto;
+  padding: 0;
+  color: #4d5c66;
+  font-size: 13px;
+}
+
+.legacy-action-detail-drawer .ant-drawer-body {
+  padding: 22px 24px;
+}
+
+.legacy-action-go-incident {
+  display: block;
+  width: max-content;
+  height: 28px;
+  margin: 0 0 20px auto;
+  padding: 0;
+  color: #4d5c66;
+  font-weight: 600;
+}
+
+.legacy-action-drawer-reference {
+  margin-bottom: 22px;
+  color: #272b30;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.legacy-action-drawer-field {
+  min-height: 54px;
+  padding: 8px 0;
+  border-bottom: 1px solid #edf0f2;
+}
+
+.legacy-action-drawer-field > span,
+.legacy-action-drawer-long-field > span {
+  display: block;
+  margin-bottom: 3px;
+  color: #6f767c;
+  font-size: 12px;
+}
+
+.legacy-action-drawer-field > strong {
+  display: block;
+  color: #272b30;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.legacy-action-drawer-field .ant-btn-link {
+  height: auto;
+  padding: 0;
+}
+
+.legacy-action-drawer-long-field {
+  min-height: 84px;
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 4px;
+  background: #fef5e5;
+}
+
+.legacy-action-drawer-long-field p {
+  margin: 0;
+  color: #272b30;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.legacy-action-detail-error {
+  padding: 12px;
+  color: #b42318;
+  background: #fff1f0;
+}

@@ -12,7 +12,7 @@ export class AuthValidationError extends Error {
 
 export class InvalidCredentialsError extends Error {
   constructor() {
-    super("Usuario, clave o pais incorrectos.");
+    super("Datos de ingreso no válidos");
     this.name = "InvalidCredentialsError";
     this.status = 401;
     this.code = "INVALID_CREDENTIALS";
@@ -46,10 +46,30 @@ function cleanName(person) {
     .trim();
 }
 
-export function createAuthService({ personRepository, passwordHashService }) {
+function normalizeAvailableCountries(rows = []) {
+  return rows
+    .map((row) => ({
+      countryCode: Number(row.countryCode ?? row.Codigo_Pais),
+      name: String(row.name ?? row.Nombre_Pais ?? "").trim(),
+    }))
+    .filter((country) => ALLOWED_COUNTRY_CODES.has(country.countryCode) && country.name);
+}
+
+export function createAuthService({ countryRepository, personRepository, passwordHashService }) {
+  async function listCountries() {
+    return normalizeAvailableCountries(await countryRepository.listActiveLoginCountries());
+  }
+
   return {
+    listCountries,
+
     async authenticate(input) {
       const credentials = validateCredentials(input);
+      const countries = await listCountries();
+      if (!countries.some((country) => country.countryCode === credentials.countryCode)) {
+        throw new AuthValidationError("Seleccione un pais valido.", "countryCode");
+      }
+
       const credential = await passwordHashService.hash(credentials.password);
       const people = await personRepository.findActiveByCredentials({
         email: credentials.username,
@@ -76,4 +96,4 @@ export function createAuthService({ personRepository, passwordHashService }) {
   };
 }
 
-export { validateCredentials };
+export { normalizeAvailableCountries, validateCredentials };

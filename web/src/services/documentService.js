@@ -1,4 +1,4 @@
-import { portalApiRequest } from "./portalApiClient.js";
+import { portalApiRequest, portalApiUrl } from "./portalApiClient.js";
 
 export function getDocuments(filters = {}) {
   return portalApiRequest({ path: "/documents", query: filters });
@@ -65,6 +65,10 @@ export function getDocumentAttachment(documentId, download = false) {
   });
 }
 
+export function getDocumentAttachmentPreviewUrl(documentId) {
+  return portalApiUrl({ path: `/documents/${documentId}/attachment`, query: { download: 0 } });
+}
+
 export function getBranchDocumentDetail(branchId) {
   return portalApiRequest({ path: `/documents/branches/${branchId}` });
 }
@@ -93,10 +97,18 @@ export function updateBookRequired(branchId, assignmentId, isRequired) {
   });
 }
 
-export function getBookEvidence(branchId, evidenceId) {
+export function getBookEvidence(branchId, evidenceId, download = false) {
   return portalApiRequest({
     path: `/documents/branches/${branchId}/books/evidence/${evidenceId}/attachment`,
+    query: { download: download ? 1 : 0 },
     responseType: "blob",
+  });
+}
+
+export function getBookEvidencePreviewUrl(branchId, evidenceId) {
+  return portalApiUrl({
+    path: `/documents/branches/${branchId}/books/evidence/${evidenceId}/attachment`,
+    query: { download: 0 },
   });
 }
 

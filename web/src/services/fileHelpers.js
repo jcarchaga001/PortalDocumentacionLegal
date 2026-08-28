@@ -10,6 +10,18 @@ export function fileToBase64(file) {
   });
 }
 
+export function blobToDataUrl(blob, contentType = "") {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("No fue posible leer el archivo."));
+    const source = contentType && blob?.type !== contentType
+      ? new Blob([blob], { type: contentType })
+      : blob;
+    reader.readAsDataURL(source);
+  });
+}
+
 export function downloadBlob(blob, fileName) {
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -21,4 +33,3 @@ export function downloadBlob(blob, fileName) {
   anchor.remove();
   URL.revokeObjectURL(objectUrl);
 }
-

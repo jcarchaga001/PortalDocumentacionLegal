@@ -3,6 +3,10 @@ import { Button, Checkbox, DatePicker, Form, Input, InputNumber, Radio, Select, 
 import dayjs from "dayjs";
 import { useEffect, useMemo, useState } from "react";
 import { useHistory, useLocation } from "react-router-dom";
+import {
+  LEGACY_AGREEMENT_UPLOAD,
+  legacyAgreementStoredExtension,
+} from "../config/legacyFileContracts.js";
 import { ROUTES } from "../routes/routePaths.js";
 import {
   createAgreement,
@@ -89,7 +93,7 @@ export function AgreementFormPage() {
         failures.push(file.name);
         continue;
       }
-      const extension = file.name.includes(".") ? file.name.split(".").pop() : "";
+      const extension = legacyAgreementStoredExtension(file.name);
       attachments.push({
         s3Key,
         fileName: file.name,
@@ -197,6 +201,8 @@ export function AgreementFormPage() {
         <Form.Item label="Observación" name="observation"><Input.TextArea rows={4} /></Form.Item>
         <Upload.Dragger
           multiple
+          accept={LEGACY_AGREEMENT_UPLOAD.accept}
+          maxCount={LEGACY_AGREEMENT_UPLOAD.maxFiles}
           fileList={files}
           beforeUpload={() => false}
           onChange={({ fileList }) => setFiles(fileList)}
@@ -208,8 +214,8 @@ export function AgreementFormPage() {
           }}
         >
           <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p>Arrastre los archivos aquí.</p>
-          <p className="ant-upload-hint">Buscar para subir.</p>
+          <p>{LEGACY_AGREEMENT_UPLOAD.prompt}</p>
+          <p className="ant-upload-hint">{LEGACY_AGREEMENT_UPLOAD.browseText}</p>
         </Upload.Dragger>
         <div className="legacy-form-actions">
           <Button danger onClick={() => history.push(ROUTES.agreements)}>Cancelar</Button>

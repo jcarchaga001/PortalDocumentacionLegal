@@ -128,6 +128,14 @@ export function normalizeActionUpdate(input = {}) {
   return normalized;
 }
 
+export function normalizeLaborActionUpdate(input = {}) {
+  const operation = normalizeText(input.operation, 32).toLowerCase();
+  if (operation === "cancel") {
+    return { operation };
+  }
+  return normalizeActionUpdate(input);
+}
+
 export function normalizeLaborCaseUpdate(input = {}) {
   const operation = normalizeText(input.operation, 32).toLowerCase();
   if (!["responsible", "reassign", "security", "priority", "pending", "close", "cancel"].includes(operation)) {
@@ -324,7 +332,7 @@ export function createIncidentService(
     },
 
     catalogs(scope, countryCode, query = {}) {
-      if (!["internal", "external", "internal-actions", "external-actions", "labor-cases", "labor-actions"].includes(scope)) {
+      if (!["internal", "external", "internal-actions", "external-actions", "labor-cases", "labor-actions", "labor-actions-legacy"].includes(scope)) {
         const error = new Error("El catalogo solicitado no es valido.");
         error.status = 400;
         error.code = "INVALID_INCIDENT_CATALOG";
@@ -480,7 +488,7 @@ export function createIncidentService(
     async updateLaborAction(countryCode, userId, actionId, input) {
       const normalizedUserId = requirePositiveInteger(userId, "userId", "La sesion no contiene un usuario valido.");
       const normalizedActionId = requirePositiveInteger(actionId, "actionId", "La accion solicitada no es valida.");
-      const update = normalizeActionUpdate(input);
+      const update = normalizeLaborActionUpdate(input);
       const result = await incidentRepository.updateLaborAction(
         countryCode,
         normalizedUserId,

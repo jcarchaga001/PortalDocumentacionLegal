@@ -13,7 +13,9 @@ export function LoginPage() {
   const location = useLocation();
   const { signIn } = useAuth();
   const [form] = Form.useForm();
-  const [countries, setCountries] = useState([{ countryCode: 4, name: "Honduras" }]);
+  const [countries, setCountries] = useState([]);
+  const [countriesLoading, setCountriesLoading] = useState(true);
+  const [countriesError, setCountriesError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [recoveryType, setRecoveryType] = useState("usuario");
@@ -23,15 +25,44 @@ export function LoginPage() {
 
   useEffect(() => {
     let active = true;
-    getCountries().then((result) => {
-      if (active && result.success && result.data?.length) setCountries(result.data);
-    });
+    setCountries([]);
+    setCountriesError("");
+    setCountriesLoading(true);
+    getCountries()
+      .then((result) => {
+        if (!active) return;
+        if (!result.success) {
+          setCountriesError(result.message || "No fue posible cargar los países disponibles.");
+          return;
+        }
+        if (!Array.isArray(result.data) || result.data.length === 0) {
+          setCountriesError("No hay países disponibles para iniciar sesión.");
+          return;
+        }
+        setCountries(result.data);
+      })
+      .catch(() => {
+        if (active) setCountriesError("No fue posible cargar los países disponibles.");
+      })
+      .finally(() => {
+        if (active) setCountriesLoading(false);
+      });
     return () => {
       active = false;
     };
   }, []);
 
+  const countriesReady = !countriesLoading && !countriesError && countries.length > 0;
+
   async function handleSubmit(values) {
+    if (!countriesReady) {
+      message.error(countriesError || "Espere mientras se cargan los países disponibles.");
+      return;
+    }
+    if (!values.countryCode) {
+      message.error("Debe Seleccionar País");
+      return;
+    }
     setSubmitting(true);
     const result = await signIn(values);
     setSubmitting(false);
@@ -50,9 +81,13 @@ export function LoginPage() {
   }
 
   async function handleRecovery() {
+    if (!countriesReady) {
+      message.error(countriesError || "Espere mientras se cargan los países disponibles.");
+      return;
+    }
     const countryCode = form.getFieldValue("countryCode");
     if (!countryCode) {
-      message.error("Debe seleccionar un país.");
+      message.error("Debe Seleccionar País");
       return;
     }
     setRecoverySubmitting(true);
@@ -84,6 +119,9 @@ export function LoginPage() {
           layout="vertical"
           requiredMark={false}
           onFinish={handleSubmit}
+          onFinishFailed={({ values }) => {
+            if (!values.countryCode) message.error("Debe Seleccionar País");
+          }}
           className="login-form"
         >
           <div className="legacy-login-logo">
@@ -93,10 +131,12 @@ export function LoginPage() {
           <div className="legacy-login-title">Portal de Documentación Legal</div>
 
           <div className="legacy-login-inputs">
-            <Form.Item name="countryCode" rules={[{ required: true, message: "Seleccione un país." }]}>
+            <Form.Item name="countryCode">
               <Select
                 placeholder="Seleccione País"
                 allowClear
+                loading={countriesLoading}
+                disabled={!countriesReady}
                 options={countries.map((country) => ({
                   value: country.countryCode,
                   label: country.name,
@@ -104,10 +144,19 @@ export function LoginPage() {
               />
             </Form.Item>
 
+            {(countriesLoading || countriesError) && (
+              <div
+                className={`legacy-country-catalog-status${countriesError ? " is-error" : ""}`}
+                role={countriesError ? "alert" : "status"}
+              >
+                {countriesError || "Cargando países..."}
+              </div>
+            )}
+
             <Form.Item
               label={<span>Usuario <b>*</b></span>}
               name="username"
-              rules={[{ required: true, message: "Ingrese su usuario." }]}
+              rules={[{ required: true, message: "Campo Obligatorio" }]}
             >
               <Input autoComplete="username" />
             </Form.Item>
@@ -115,7 +164,7 @@ export function LoginPage() {
             <Form.Item
               label={<span>Clave <b>*</b></span>}
               name="password"
-              rules={[{ required: true, message: "Ingrese su clave." }]}
+              rules={[{ required: true, message: "Campo Obligatorio" }]}
             >
               <Input type="password" autoComplete="current-password" />
             </Form.Item>
@@ -125,13 +174,20 @@ export function LoginPage() {
                 className="legacy-forgot-link"
                 type="button"
                 title="¿Olvido su contraseña?  Registre nuevamente"
+                disabled={!countriesReady}
                 onClick={() => setForgotOpen(true)}
               >
                 Olvidé Contraseña
               </button>
             </div>
 
-            <Button type="primary" htmlType="submit" loading={submitting} block>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={submitting}
+              disabled={!countriesReady}
+              block
+            >
               Ingresar
             </Button>
           </div>

@@ -5,7 +5,6 @@ import {
 } from "./legacyEmailTemplates.js";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MANUAL_DOCUMENT_EXPIRATION_RECIPIENT = "legal.hn@farmavalue.com";
 
 function serviceError(message, { code = "VALIDATION_ERROR", field, status = 400 } = {}) {
   const error = new Error(message);
@@ -135,6 +134,7 @@ export function createNotificationService({
   allowLiveExecution = String(process.env.NOTIFICATION_LIVE_ENABLED || "").trim().toLowerCase() === "true",
 } = {}) {
   if (!repository) throw new Error("notificationRepository es obligatorio.");
+  let documentExpirationProcessRunning = false;
 
   function requireLiveExecution() {
     if (!allowLiveExecution) {
@@ -344,7 +344,11 @@ export function createNotificationService({
 
       return dispatch({
         template: "emNotificacionLegal",
-        to: MANUAL_DOCUMENT_EXPIRATION_RECIPIENT,
+        to: document.branchEmail,
+        cc: configuredRecipients(
+          "DOCUMENT_EXPIRATION_CC",
+          "legal.hn@farmavalue.com,angie.rodriguez@farmavalue.com",
+        ),
         data: {
           countryCode: requestedCountryCode,
           belongsTo: document.branchName,
@@ -363,21 +367,30 @@ export function createNotificationService({
       const options = normalizeRunInput(input, clock, (asOf) => ({
         warningCutoff: shiftDate(asOf, { months: 3 }),
       }));
-      if (!options.dryRun) requireLiveExecution();
-      const candidates = await repository.listDocumentExpirationCandidates(options);
-      const counts = candidates.reduce(
-        (result, candidate) => ({ ...result, [candidate.kind]: result[candidate.kind] + 1 }),
-        { expired: 0, warning: 0 },
-      );
+      if (!options.dryRun) {
+        requireLiveExecution();
+        if (!String(input?.asOf || "").trim()) {
+          throw serviceError("La ejecución real exige una fecha de corte explícita.", {
+            code: "NOTIFICATION_AS_OF_REQUIRED",
+            field: "asOf",
+          });
+        }
+      }
+
+      const execute = async () => {
+        const warningCandidates = await repository.listDocumentWarningCandidates(options);
 
       if (options.dryRun) {
+        const expiredCandidates = await repository.listDocumentExpiredCandidates(options);
         return {
           process: "prcVerificarProximoVencer",
           dryRun: true,
           asOf: options.asOf,
           warningCutoff: options.warningCutoff,
-          candidates: candidates.length,
-          ...counts,
+          candidates: warningCandidates.length + expiredCandidates.length,
+          warning: warningCandidates.length,
+          expired: expiredCandidates.length,
+          summaryEligible: warningCandidates.length > 0 && expiredCandidates.length > 0,
           sent: 0,
           failed: 0,
           skipped: 0,
@@ -387,35 +400,59 @@ export function createNotificationService({
       const successful = [];
       const failures = [];
       let skipped = 0;
-      for (const candidate of candidates) {
-        const claimed = await repository.claimDocumentExpiration(candidate, options.asOf);
-        if (!claimed) {
-          skipped += 1;
-          continue;
-        }
-        try {
-          await dispatch({
-            template: candidate.kind === "expired" ? "emNotificacionLegalVencido" : "emNotificacionLegal",
-            to: candidate.branchEmail,
-            cc: configuredRecipients(
-              "DOCUMENT_EXPIRATION_CC",
-              "legal.hn@farmavalue.com,angie.rodriguez@farmavalue.com",
-            ),
-            data: documentTemplateData(candidate),
-          });
-          successful.push(candidate);
-        } catch (error) {
-          await repository.releaseDocumentExpiration(candidate);
-          failures.push({ id: candidate.id, code: error.code || "MAIL_SEND_FAILED" });
+
+      async function processCandidates(candidates, claim) {
+        for (const candidate of candidates) {
+          const claimed = await claim(candidate);
+          if (!claimed) {
+            skipped += 1;
+            continue;
+          }
+          try {
+            await dispatch({
+              template: candidate.kind === "expired" ? "emNotificacionLegalVencido" : "emNotificacionLegal",
+              to: candidate.branchEmail,
+              cc: configuredRecipients(
+                "DOCUMENT_EXPIRATION_CC",
+                "legal.hn@farmavalue.com,angie.rodriguez@farmavalue.com",
+              ),
+              data: documentTemplateData(candidate),
+            });
+            successful.push(candidate);
+          } catch (error) {
+            const released = await repository.releaseDocumentExpiration(candidate, options.asOf);
+            failures.push({
+              id: candidate.id,
+              kind: candidate.kind,
+              code: error.code || "MAIL_SEND_FAILED",
+              released,
+            });
+          }
         }
       }
 
+      await processCandidates(
+        warningCandidates,
+        (candidate) => repository.claimDocumentWarning(candidate, options),
+      );
+
+      // El aggregate de vencidos se ejecuta después de la transición 2 -> 4.
+      // Esto conserva el doble paso legacy para documentos ya vencidos en estado 2.
+      const expiredCandidates = await repository.listDocumentExpiredCandidates(options);
+      await processCandidates(
+        expiredCandidates,
+        (candidate) => repository.claimDocumentExpired(candidate, options.asOf),
+      );
+
       const summaryFailures = [];
       const byCountry = new Map();
-      for (const candidate of successful) {
-        const group = byCountry.get(candidate.countryCode) || [];
-        group.push(candidate);
-        byCountry.set(candidate.countryCode, group);
+      const summaryEligible = warningCandidates.length > 0 && expiredCandidates.length > 0;
+      if (summaryEligible) {
+        for (const candidate of successful) {
+          const group = byCountry.get(candidate.countryCode) || [];
+          group.push(candidate);
+          byCountry.set(candidate.countryCode, group);
+        }
       }
       for (const [candidateCountry, countryDocuments] of byCountry) {
         try {
@@ -434,21 +471,53 @@ export function createNotificationService({
         }
       }
 
-      return {
-        process: "prcVerificarProximoVencer",
-        dryRun: false,
-        asOf: options.asOf,
-        warningCutoff: options.warningCutoff,
-        candidates: candidates.length,
-        ...counts,
-        sent: successful.length,
-        failed: failures.length,
-        skipped,
-        summarySent: byCountry.size - summaryFailures.length,
-        summaryFailed: summaryFailures.length,
-        failures,
-        summaryFailures,
+        return {
+          process: "prcVerificarProximoVencer",
+          dryRun: false,
+          asOf: options.asOf,
+          warningCutoff: options.warningCutoff,
+          candidates: warningCandidates.length + expiredCandidates.length,
+          warning: warningCandidates.length,
+          expired: expiredCandidates.length,
+          sent: successful.length,
+          failed: failures.length,
+          skipped,
+          summaryEligible,
+          summarySent: byCountry.size - summaryFailures.length,
+          summaryFailed: summaryFailures.length,
+          failures,
+          summaryFailures,
+        };
       };
+
+      if (options.dryRun) return execute();
+      if (documentExpirationProcessRunning) {
+        throw serviceError("El proceso de vencimientos ya está en ejecución.", {
+          code: "NOTIFICATION_PROCESS_ALREADY_RUNNING",
+          status: 409,
+        });
+      }
+
+      documentExpirationProcessRunning = true;
+      let releaseProcessLock;
+      try {
+        if (typeof repository.acquireDocumentExpirationProcessLock === "function") {
+          releaseProcessLock = await repository.acquireDocumentExpirationProcessLock();
+          if (!releaseProcessLock) {
+            throw serviceError("El proceso de vencimientos ya está en ejecución.", {
+              code: "NOTIFICATION_PROCESS_ALREADY_RUNNING",
+              status: 409,
+            });
+          }
+        }
+        return await execute();
+      } finally {
+        try {
+          if (releaseProcessLock) await releaseProcessLock();
+        } finally {
+          documentExpirationProcessRunning = false;
+        }
+      }
     },
 
     async runAgreementExpirationProcess(input = {}) {

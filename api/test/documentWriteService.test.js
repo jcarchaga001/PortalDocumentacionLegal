@@ -104,10 +104,12 @@ test("descarga usa S3 y conserva el blob como respaldo del legacy", async () => 
   };
   const remoteService = createDocumentService(repository, {
     async downloadS3File() {
-      return { success: true, data: { buffer: Buffer.from("s3"), contentType: "application/pdf" } };
+      return { success: true, data: { buffer: Buffer.from("s3"), contentType: "text/plain" } };
     },
   });
-  assert.equal((await remoteService.attachment(4, 1)).buffer.toString(), "s3");
+  const remoteAttachment = await remoteService.attachment(4, 1);
+  assert.equal(remoteAttachment.buffer.toString(), "s3");
+  assert.equal(remoteAttachment.contentType, "application/pdf");
 
   const fallbackService = createDocumentService(repository, {
     async downloadS3File() {
@@ -115,6 +117,25 @@ test("descarga usa S3 y conserva el blob como respaldo del legacy", async () => 
     },
   });
   assert.equal((await fallbackService.attachment(4, 1)).buffer.toString(), "legacy");
+});
+
+test("visor de libros corrige el MIME remoto aun si ext conserva punto o mayusculas", async () => {
+  const service = createDocumentService({
+    async getBookEvidence() {
+      return {
+        fileName: "FA63 Psicotropicas.pdf",
+        extension: ".PDF",
+        s3Key: "evidencia",
+      };
+    },
+  }, {
+    async downloadS3File() {
+      return { success: true, data: { buffer: Buffer.from("%PDF-1.4"), contentType: "text/plain" } };
+    },
+  });
+
+  const evidence = await service.bookEvidence(4, 226, 61);
+  assert.equal(evidence.contentType, "application/pdf");
 });
 
 test("permisos de eliminacion replican puestos 7 y 32", async () => {
@@ -140,20 +161,23 @@ test("formatos de archivo coinciden con ComprimirArchivosMultimedia del legacy",
   }
   assert.throws(
     () => normalizeAttachment({ fileName: "archivo.docx", fileBase64: "eA==" }),
-    (error) => error.status === 400 && error.field === "attachment",
+    (error) => error.status === 400
+      && error.field === "attachment"
+      && error.message === "El formato del documento no es permitido",
   );
 });
 
-test("documento referencial no exige fechas y el normal requiere ambas", () => {
-  const referential = normalizeDocumentPayload(validPayload({
-    isReferential: true,
-    documentDate: undefined,
-    expirationDate: undefined,
-  }));
+test("detalle sucursal conserva nivel opcional y exige ambas fechas aun si es referencial", () => {
+  const referential = normalizeDocumentPayload(validPayload({ isReferential: true, level: undefined }));
   assert.equal(referential.isReferential, true);
-  assert.equal(referential.documentDate, undefined);
+  assert.equal(referential.level, null);
+  assert.equal(referential.documentDate, "2026-08-01");
   assert.throws(
-    () => normalizeDocumentPayload(validPayload({ expirationDate: undefined })),
+    () => normalizeDocumentPayload(validPayload({ isReferential: true, documentDate: undefined })),
+    (error) => error.field === "documentDate",
+  );
+  assert.throws(
+    () => normalizeDocumentPayload(validPayload({ isReferential: true, expirationDate: undefined })),
     (error) => error.field === "expirationDate",
   );
 });

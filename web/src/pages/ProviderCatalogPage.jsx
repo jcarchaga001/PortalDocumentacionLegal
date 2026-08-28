@@ -1,9 +1,20 @@
-import { EditOutlined, PlusOutlined } from "@ant-design/icons";
-import { Alert, Button, Checkbox, Form, Input, Modal, Select, Space, Table, message } from "antd";
+import { DownOutlined, EditOutlined, PlusOutlined, UpOutlined } from "@ant-design/icons";
+import { Alert, Button, Checkbox, Form, Input, Modal, Select, Space, Spin, Table, message } from "antd";
 import { useState } from "react";
 import { useCatalogList, useCatalogLookups } from "../hooks/useCatalogList.js";
-import { createProvider, getProviders, updateProvider } from "../services/catalogService.js";
+import {
+  createProvider,
+  getProviderDestinations,
+  getProviders,
+  updateProvider,
+} from "../services/catalogService.js";
 import { LegacyBoolean, isTrue, options } from "./CatalogUi.jsx";
+import {
+  formatProviderDestinationCurrency,
+  PROVIDER_DESTINATION_COLUMN_TITLES,
+  PROVIDER_DESTINATION_EMPTY_TEXT,
+} from "./providerDestinations.js";
+import "./ProviderCatalogPage.css";
 
 const loadProviders = (query) => getProviders(query);
 
@@ -39,6 +50,8 @@ export function ProviderCatalogPage() {
   const [editing, setEditing] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [expandedProviderIds, setExpandedProviderIds] = useState([]);
+  const [destinationsByProvider, setDestinationsByProvider] = useState({});
 
   function openModal(provider = null) {
     setEditing(provider);
@@ -79,6 +92,90 @@ export function ProviderCatalogPage() {
     setSaving(false);
   }
 
+  async function toggleProviderDestinations(provider) {
+    const providerId = Number(provider.id);
+    const isExpanded = expandedProviderIds.includes(providerId);
+    if (isExpanded) {
+      setExpandedProviderIds((current) => current.filter((id) => id !== providerId));
+      return;
+    }
+
+    setExpandedProviderIds((current) => [...current, providerId]);
+    if (destinationsByProvider[providerId]?.loaded) return;
+    setDestinationsByProvider((current) => ({
+      ...current,
+      [providerId]: { items: [], currencySymbol: "", error: "", loading: true, loaded: false },
+    }));
+    const result = await getProviderDestinations(providerId);
+    setDestinationsByProvider((current) => ({
+      ...current,
+      [providerId]: result.success
+        ? {
+            items: result.data?.items || [],
+            currencySymbol: result.data?.currencySymbol || "",
+            error: "",
+            loading: false,
+            loaded: true,
+          }
+        : {
+            items: [],
+            currencySymbol: "",
+            error: result.message || "No fue posible consultar los destinos vinculados.",
+            loading: false,
+            loaded: false,
+          },
+    }));
+  }
+
+  function renderProviderDestinations(provider) {
+    const destinationState = destinationsByProvider[Number(provider.id)] || {
+      items: [],
+      currencySymbol: "",
+      error: "",
+      loading: true,
+    };
+    if (destinationState.loading) {
+      return <div className="legacy-provider-destinations-loading"><Spin size="small" /></div>;
+    }
+    if (destinationState.error) {
+      return <Alert type="error" showIcon message={destinationState.error} />;
+    }
+    if (destinationState.items.length === 0) {
+      return <div className="legacy-provider-destinations-empty">{PROVIDER_DESTINATION_EMPTY_TEXT}</div>;
+    }
+    return (
+      <div className="legacy-provider-destinations">
+        <Table
+          className="legacy-provider-destinations-table"
+          rowKey="id"
+          size="small"
+          pagination={false}
+          dataSource={destinationState.items}
+          columns={[
+            {
+              title: PROVIDER_DESTINATION_COLUMN_TITLES[0],
+              dataIndex: "bankName",
+              key: "bankName",
+            },
+            {
+              title: PROVIDER_DESTINATION_COLUMN_TITLES[1],
+              dataIndex: "accountNumber",
+              key: "accountNumber",
+            },
+            {
+              title: PROVIDER_DESTINATION_COLUMN_TITLES[2],
+              key: "currency",
+              render: (_, row) => formatProviderDestinationCurrency(
+                row.isDollars,
+                destinationState.currencySymbol,
+              ),
+            },
+          ]}
+        />
+      </div>
+    );
+  }
+
   const columns = [
     { title: "Nombre Comercial", dataIndex: "commercialName", key: "commercialName", width: 280, sorter: true },
     { title: "Nombre Legal", dataIndex: "legalName", key: "legalName", width: 280, sorter: true },
@@ -94,7 +191,14 @@ export function ProviderCatalogPage() {
       fixed: "right",
       render: (_, row) => (
         <Space size={4}>
-          <Button type="link" className="legacy-catalog-row-link" onClick={() => openModal(row)}>Destinos</Button>
+          <Button
+            type="link"
+            className="legacy-catalog-row-link legacy-provider-destination-trigger"
+            icon={expandedProviderIds.includes(Number(row.id)) ? <UpOutlined /> : <DownOutlined />}
+            onClick={() => toggleProviderDestinations(row)}
+          >
+            Destinos
+          </Button>
           <Button type="text" icon={<EditOutlined />} aria-label={`Editar ${row.commercialName}`} onClick={() => openModal(row)} />
         </Space>
       ),
@@ -129,6 +233,11 @@ export function ProviderCatalogPage() {
         pagination={listing.pagination}
         onChange={listing.changeTable}
         scroll={{ x: 1450 }}
+        expandable={{
+          expandedRowKeys: expandedProviderIds,
+          expandedRowRender: renderProviderDestinations,
+          showExpandColumn: false,
+        }}
       />
 
       <Modal

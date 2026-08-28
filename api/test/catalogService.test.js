@@ -92,6 +92,25 @@ test("proveedores requieren el número fiscal y bloquean duplicados", async () =
   );
 });
 
+test("destinos de proveedor validan el identificador y conservan el país autenticado", async () => {
+  const calls = [];
+  const service = createCatalogService({
+    async listProviderDestinations(countryCode, providerId) {
+      calls.push({ countryCode, providerId });
+      return { items: [], currencySymbol: "L" };
+    },
+  });
+
+  const result = await service.listProviderDestinations(4, "77");
+
+  assert.deepEqual(calls, [{ countryCode: 4, providerId: 77 }]);
+  assert.deepEqual(result, { items: [], currencySymbol: "L" });
+  assert.throws(
+    () => service.listProviderDestinations(4, "no-valido"),
+    (error) => error instanceof CatalogValidationError && error.field === "id",
+  );
+});
+
 test("entes exigen área y responsable válidos", async () => {
   const service = createCatalogService({});
   await assert.rejects(

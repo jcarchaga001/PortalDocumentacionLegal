@@ -1,6 +1,8 @@
 import { getDatabasePool } from "../config/database.js";
 import { getDatabaseNames } from "../config/databaseNames.js";
 
+const DOCUMENT_EXPIRATION_PROCESS_LOCK = "DocumentacionLegal.prcVerificarProximoVencer";
+
 function normalizeAffectedRows(result) {
   return Number(result?.affectedRows || 0);
 }
@@ -13,7 +15,85 @@ export function createNotificationRepository(pool) {
   const databases = getDatabaseNames();
   const databasePool = () => pool || getDatabasePool();
 
+  async function listDocumentCandidates({ where, parameters, kind }) {
+    const [rows] = await databasePool().execute(
+      `SELECT d.codigoDocumento AS id,
+              d.referenciaDocumento AS documentCode,
+              d.numeroContrato AS documentReference,
+              DATE_FORMAT(d.fechaVencimiento, '%Y-%m-%d') AS dueDate,
+              d.tipoDocumentacion AS documentType,
+              d.codigoPais AS countryCode,
+              d.codigoSucursal AS branchId,
+              d.estadoDocumento AS statusId,
+              COALESCE(d.mailVencido, 0) AS expiredMailSent,
+              d.fechaUltimaActualizacion AS lastUpdatedAt,
+              c.nombreCategoria AS category,
+              sc.NombreSubcategoria AS subcategory,
+              s.Nombre_Sucursal AS branchName,
+              CONCAT_WS(' - ', s.Codigo_InternoSucursal, s.Nombre_Sucursal) AS branchLabel,
+              s.correoSucursal AS branchEmail
+       FROM ${databases.documents}.tblDocumentos d
+       LEFT JOIN ${databases.documents}.tblCategoriaDocumentos c
+         ON c.codigoCategoria = d.categoriaDocumento
+       LEFT JOIN ${databases.documents}.tblSubcategoriaDocumentos sc
+         ON sc.codigoSubcategoria = d.subCategoriaDocumento
+        AND sc.codigoCategoria = d.categoriaDocumento
+       LEFT JOIN ${databases.people}.tblSucursales s
+         ON s.Codigo_Sucursal = d.codigoSucursal
+       WHERE COALESCE(d.isReferencial, 0) = 0
+         AND ${where}
+       ORDER BY d.referenciaDocumento`,
+      parameters,
+    );
+    return rows.map((row) => ({
+      ...row,
+      kind,
+      id: Number(row.id),
+      countryCode: Number(row.countryCode),
+      branchId: Number(row.branchId),
+      statusId: Number(row.statusId),
+      documentType: Number(row.documentType),
+      expiredMailSent: Boolean(row.expiredMailSent),
+    }));
+  }
+
   return {
+    async acquireDocumentExpirationProcessLock() {
+      const activePool = databasePool();
+      if (typeof activePool.getConnection !== "function") {
+        throw new Error("El pool no permite reservar una conexión para el bloqueo del proceso.");
+      }
+
+      const connection = await activePool.getConnection();
+      try {
+        const [rows] = await connection.execute(
+          "SELECT GET_LOCK(?, 0) AS acquired",
+          [DOCUMENT_EXPIRATION_PROCESS_LOCK],
+        );
+        if (Number(rows[0]?.acquired) !== 1) {
+          connection.release();
+          return null;
+        }
+
+        let active = true;
+        return async () => {
+          if (!active) return;
+          active = false;
+          try {
+            await connection.execute(
+              "SELECT RELEASE_LOCK(?) AS released",
+              [DOCUMENT_EXPIRATION_PROCESS_LOCK],
+            );
+          } finally {
+            connection.release();
+          }
+        };
+      } catch (error) {
+        connection.release();
+        throw error;
+      }
+    },
+
     async findPerson(personId, countryCode) {
       const [rows] = await databasePool().execute(
         `SELECT Codigo_Personas AS id,
@@ -54,6 +134,7 @@ export function createNotificationRepository(pool) {
                 DATE_FORMAT(d.fechaVencimiento, '%Y-%m-%d') AS dueDate,
                 d.tipoDocumentacion AS documentType,
                 s.Nombre_Sucursal AS branchName,
+                s.correoSucursal AS branchEmail,
                 sc.NombreSubcategoria AS documentName,
                 st.nombreEstado AS transactionType
          FROM ${databases.documents}.tblDocumentos d
@@ -81,98 +162,78 @@ export function createNotificationRepository(pool) {
       };
     },
 
-    async listDocumentExpirationCandidates({ asOf, warningCutoff }) {
-      const [rows] = await databasePool().execute(
-        `SELECT d.codigoDocumento AS id,
-                d.referenciaDocumento AS documentCode,
-                d.numeroContrato AS documentReference,
-                DATE_FORMAT(d.fechaVencimiento, '%Y-%m-%d') AS dueDate,
-                d.tipoDocumentacion AS documentType,
-                d.codigoPais AS countryCode,
-                d.codigoSucursal AS branchId,
-                d.estadoDocumento AS statusId,
-                COALESCE(d.mailVencido, 0) AS expiredMailSent,
-                c.nombreCategoria AS category,
-                sc.NombreSubcategoria AS subcategory,
-                s.Nombre_Sucursal AS branchName,
-                CONCAT_WS(' - ', s.Codigo_InternoSucursal, s.Nombre_Sucursal) AS branchLabel,
-                s.correoSucursal AS branchEmail
-         FROM ${databases.documents}.tblDocumentos d
-         INNER JOIN ${databases.documents}.tblCategoriaDocumentos c
-           ON c.codigoCategoria = d.categoriaDocumento
-         INNER JOIN ${databases.documents}.tblSubcategoriaDocumentos sc
-           ON sc.codigoSubcategoria = d.subCategoriaDocumento
-          AND sc.codigoCategoria = d.categoriaDocumento
-         INNER JOIN ${databases.people}.tblSucursales s
-           ON s.Codigo_Sucursal = d.codigoSucursal
-         WHERE COALESCE(d.isReferencial, 0) = 0
-           AND (
-             (d.fechaVencimiento < ?
-               AND d.estadoDocumento IN (2, 4)
-               AND COALESCE(d.mailVencido, 0) = 0)
-             OR
-             (d.fechaVencimiento >= ?
-               AND d.fechaVencimiento < ?
-               AND d.estadoDocumento = 2)
-           )
-         ORDER BY d.fechaVencimiento, d.codigoDocumento`,
-        [asOf, asOf, warningCutoff],
-      );
-      return rows.map((row) => ({
-        ...row,
-        kind: row.dueDate < asOf ? "expired" : "warning",
-        id: Number(row.id),
-        countryCode: Number(row.countryCode),
-        branchId: Number(row.branchId),
-        statusId: Number(row.statusId),
-        documentType: Number(row.documentType),
-        expiredMailSent: Boolean(row.expiredMailSent),
-      }));
+    async listDocumentWarningCandidates({ warningCutoff }) {
+      return listDocumentCandidates({
+        where: "d.fechaVencimiento < ? AND d.estadoDocumento = 2",
+        parameters: [warningCutoff],
+        kind: "warning",
+      });
     },
 
-    async claimDocumentExpiration(candidate, asOf) {
-      const parameters = [];
-      let statement;
-      if (candidate.kind === "expired") {
-        statement = `UPDATE ${databases.documents}.tblDocumentos
-                     SET estadoDocumento = 5,
-                         mailVencido = 1,
-                         fechaUltimaActualizacion = ?
-                     WHERE codigoDocumento = ?
-                       AND estadoDocumento = ?
-                       AND COALESCE(mailVencido, 0) = 0
-                       AND fechaVencimiento < ?
-                       AND COALESCE(isReferencial, 0) = 0`;
-        parameters.push(asOf, candidate.id, candidate.statusId, asOf);
-      } else {
-        statement = `UPDATE ${databases.documents}.tblDocumentos
-                     SET estadoDocumento = 4,
-                         fechaUltimaActualizacion = ?
-                     WHERE codigoDocumento = ?
-                       AND estadoDocumento = 2
-                       AND COALESCE(isReferencial, 0) = 0`;
-        parameters.push(asOf, candidate.id);
-      }
+    async listDocumentExpiredCandidates({ asOf }) {
+      return listDocumentCandidates({
+        where: "d.fechaVencimiento < ? AND d.estadoDocumento IN (2, 4)",
+        parameters: [asOf],
+        kind: "expired",
+      });
+    },
 
-      const [result] = await databasePool().execute(statement, parameters);
+    async claimDocumentWarning(candidate, { asOf, warningCutoff }) {
+      const [result] = await databasePool().execute(
+        `UPDATE ${databases.documents}.tblDocumentos
+         SET estadoDocumento = 4,
+             fechaUltimaActualizacion = ?
+         WHERE codigoDocumento = ?
+           AND estadoDocumento = 2
+           AND fechaVencimiento < ?
+           AND COALESCE(isReferencial, 0) = 0`,
+        [asOf, candidate.id, warningCutoff],
+      );
       return normalizeAffectedRows(result) === 1;
     },
 
-    async releaseDocumentExpiration(candidate) {
+    async claimDocumentExpired(candidate, asOf) {
+      const [result] = await databasePool().execute(
+        `UPDATE ${databases.documents}.tblDocumentos
+         SET estadoDocumento = 5,
+             mailVencido = 1,
+             fechaUltimaActualizacion = ?
+         WHERE codigoDocumento = ?
+           AND estadoDocumento = ?
+           AND fechaVencimiento < ?
+           AND COALESCE(isReferencial, 0) = 0`,
+        [asOf, candidate.id, candidate.statusId, asOf],
+      );
+      return normalizeAffectedRows(result) === 1;
+    },
+
+    async releaseDocumentExpiration(candidate, asOf) {
       let statement;
       let parameters;
       if (candidate.kind === "expired") {
         statement = `UPDATE ${databases.documents}.tblDocumentos
-                     SET estadoDocumento = ?, mailVencido = 0
+                     SET estadoDocumento = ?,
+                         mailVencido = ?,
+                         fechaUltimaActualizacion = ?
                      WHERE codigoDocumento = ?
                        AND estadoDocumento = 5
-                       AND COALESCE(mailVencido, 0) = 1`;
-        parameters = [candidate.statusId, candidate.id];
+                       AND COALESCE(mailVencido, 0) = 1
+                       AND fechaUltimaActualizacion = ?`;
+        parameters = [
+          candidate.statusId,
+          candidate.expiredMailSent ? 1 : 0,
+          candidate.lastUpdatedAt ?? null,
+          candidate.id,
+          asOf,
+        ];
       } else {
         statement = `UPDATE ${databases.documents}.tblDocumentos
-                     SET estadoDocumento = 2
-                     WHERE codigoDocumento = ? AND estadoDocumento = 4`;
-        parameters = [candidate.id];
+                     SET estadoDocumento = 2,
+                         fechaUltimaActualizacion = ?
+                     WHERE codigoDocumento = ?
+                       AND estadoDocumento = 4
+                       AND fechaUltimaActualizacion = ?`;
+        parameters = [candidate.lastUpdatedAt ?? null, candidate.id, asOf];
       }
       const [result] = await databasePool().execute(statement, parameters);
       return normalizeAffectedRows(result) === 1;
@@ -225,3 +286,5 @@ export function createNotificationRepository(pool) {
     },
   };
 }
+
+export { DOCUMENT_EXPIRATION_PROCESS_LOCK };

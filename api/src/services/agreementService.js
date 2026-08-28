@@ -43,7 +43,7 @@ function normalizeAgreementAttachment(attachment = {}) {
     throw validationError("El nombre del archivo es obligatorio.", "attachments.fileName");
   }
   const extension = typeof attachment.extension === "string"
-    ? attachment.extension.trim().replace(/^\./, "").slice(0, 10)
+    ? attachment.extension.trim().slice(0, 10)
     : "";
   return { s3Key, fileName, extension };
 }

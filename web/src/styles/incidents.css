@@ -192,6 +192,28 @@
 .legacy-incident-table .ant-tag { margin-inline-end: 0; }
 .legacy-row-actions { display: inline-flex; }
 
+.legacy-labor-action-history {
+  max-width: 760px;
+  margin: 0 0 0 12px;
+}
+
+.legacy-labor-action-history .ant-list-item {
+  padding: 10px 12px;
+  border-bottom-color: #dee2e6;
+}
+
+.legacy-labor-action-history-row {
+  display: grid;
+  grid-template-columns: 150px 120px 180px minmax(220px, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  color: #5f666d;
+  font-size: 13px;
+}
+
+.legacy-labor-action-history-row p { margin: 0; }
+
 .legacy-incident-back {
   display: inline-flex;
   align-items: center;

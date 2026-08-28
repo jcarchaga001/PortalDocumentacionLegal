@@ -20,6 +20,10 @@ export function getProviders(query) {
   return portalApiRequest({ path: "/catalogs/providers", query });
 }
 
+export function getProviderDestinations(providerId) {
+  return portalApiRequest({ path: `/catalogs/providers/${providerId}/destinations` });
+}
+
 export function createProvider(payload) {
   return portalApiRequest({ path: "/catalogs/providers", method: "POST", body: payload });
 }

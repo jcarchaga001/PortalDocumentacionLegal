@@ -10,10 +10,13 @@ function requireRecoveryService(passwordRecoveryService) {
 
 export function createAuthController({ authService, sessionService, passwordRecoveryService }) {
   return {
-    countries(_req, res) {
-      res.json(normalizedSuccess("Paises disponibles.", [
-        { countryCode: 4, name: "Honduras" },
-      ]));
+    async countries(_req, res, next) {
+      try {
+        const countries = await authService.listCountries();
+        res.json(normalizedSuccess("Paises disponibles.", countries));
+      } catch (error) {
+        next(error);
+      }
     },
 
     async login(req, res, next) {

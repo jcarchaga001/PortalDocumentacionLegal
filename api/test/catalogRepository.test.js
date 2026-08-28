@@ -59,6 +59,42 @@ test("proveedores consulta nombres físicos con porcentajes escapados", async ()
   assert.deepEqual(listCall.parameters, [4, "Farmacia", "0801"]);
 });
 
+test("destinos de proveedor replica GetDestino con banco, estado 5 y limite 500", async () => {
+  const calls = [];
+  const repository = createCatalogRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      if (/FROM .*tblDestinos d/.test(sql)) {
+        return [[{
+          id: 31,
+          bankName: "Banco Uno",
+          accountNumber: "12345",
+          isDollars: 0,
+        }], []];
+      }
+      if (/FROM .*tblPaises/.test(sql)) return [[{ currencySymbol: "L" }], []];
+      return [[], []];
+    },
+  });
+
+  const result = await repository.listProviderDestinations(4, 77);
+
+  const destinationCall = calls.find(({ sql }) => /FROM .*tblDestinos d/.test(sql));
+  assert.match(destinationCall.sql, /LEFT JOIN .*tblBancos b/);
+  assert.match(destinationCall.sql, /d\.Cod_Banco = b\.Cod_Banco/);
+  assert.match(destinationCall.sql, /d\.CodPais = \?/);
+  assert.match(destinationCall.sql, /d\.codigoProveedor = \?/);
+  assert.match(destinationCall.sql, /d\.Cod_Estado = 5/);
+  assert.match(destinationCall.sql, /LIMIT 500/);
+  assert.deepEqual(destinationCall.parameters, [4, 77]);
+  const currencyCall = calls.find(({ sql }) => /FROM .*tblPaises/.test(sql));
+  assert.deepEqual(currencyCall.parameters, [4]);
+  assert.deepEqual(result, {
+    items: [{ id: 31, bankName: "Banco Uno", accountNumber: "12345", isDollars: 0 }],
+    currencySymbol: "L",
+  });
+});
+
 test("toggle de categoría modifica tblSubcategoriaDocumentos y escribe bitácora en transacción", async () => {
   const calls = [];
   const lifecycle = [];

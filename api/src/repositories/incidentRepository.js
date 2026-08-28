@@ -732,8 +732,9 @@ export function createIncidentRepository(pool) {
                i.Cod_Incidente AS incidentId,
                i.CorrelativoIncidente AS incidentNumber,
                CASE WHEN a.fechaFin IS NULL OR YEAR(a.fechaFin) <= 1900 THEN NULL ELSE DATE_FORMAT(a.fechaFin, '%Y-%m-%d') END AS closeDate,
-               COALESCE(a.nombreAccion, actionType.NombreAccion) AS actionName,
+               actionType.NombreAccion AS actionName,
                a.descripcionAccion AS description,
+               a.responsable AS responsibleId,
                responsible.Nombre_Personas AS responsibleName,
                st.codigoEstado AS statusId,
                st.nombreEstado AS statusName,
@@ -1136,8 +1137,8 @@ export function createIncidentRepository(pool) {
           description = "Se ha anulado la accion";
           await connection.execute(
             `UPDATE ${databases.documents}.tblAccionesIncidentes_Legal
-             SET codigoEstado = 3, \`Justificación\` = ? WHERE codigoAccionIncidente = ?`,
-            [update.justification, actionId],
+             SET codigoEstado = 3 WHERE codigoAccionIncidente = ?`,
+            [actionId],
           );
         } else if (update.operation === "close") {
           statusId = 5;
@@ -1323,9 +1324,15 @@ export function createIncidentRepository(pool) {
       const databasePool = pool || getDatabasePool();
       const external = scope.startsWith("external");
       const labor = scope.startsWith("labor");
+      const legacyLaborActions = scope === "labor-actions-legacy";
       const incidentActions = scope === "internal-actions" || scope === "external-actions";
-      const statusesTable = labor ? "tblEstadosIncidentes_Legal" : "tblEstadosIncidentes";
+      const laborActionListing = scope === "labor-actions" && !filters.incidentId;
+      const statusesTable = laborActionListing
+        ? "tblEstadosIncidentes"
+        : labor ? "tblEstadosIncidentes_Legal" : "tblEstadosIncidentes";
       const statusFilter = scope === "labor-cases" ? "AND codigoEstado IN (1, 2, 5)" : "";
+      const activeStatusFilter = laborActionListing ? "" : "WHERE isActive = 1";
+      const activeActionFilter = laborActionListing ? "" : "WHERE IsActivo = 1";
       const recipientBranchFilter = filters.branchId ? "AND Codigo_Sucursal = ?" : "AND 1 = 0";
       const recipientParameters = filters.branchId ? [countryCode, filters.branchId] : [countryCode];
       let responsiblePeopleQuery = [
@@ -1363,17 +1370,62 @@ export function createIncidentRepository(pool) {
           [countryCode, incident.branchId, incident.typeId, countryCode, countryCode],
         ];
       }
+      const legalResponsiblePeopleQuery = [
+        `SELECT p.Codigo_Personas AS id, p.Nombre_Personas AS name
+         FROM ${databases.documents}.tblUsuariosAcciones ua
+         INNER JOIN ${databases.people}.tblPersonas p ON p.Codigo_Personas = ua.codigoUsuario
+         WHERE ua.codigoPais = ? AND ua.isRRHH = 1 AND ua.isActive = 1 AND p.isActivo = 1
+         ORDER BY p.Nombre_Personas`,
+        [countryCode],
+      ];
+      let laborResponsiblePeopleQuery = legalResponsiblePeopleQuery;
+      if (legacyLaborActions) {
+        laborResponsiblePeopleQuery = [
+          `SELECT DISTINCT p.Codigo_Personas AS id, p.Nombre_Personas AS name
+           FROM ${databases.documents}.tblUsuariosAcciones ua
+           LEFT JOIN ${databases.people}.tblPersonas p ON p.Codigo_Personas = ua.codigoUsuario
+           WHERE ua.isRRHH = 1 AND ua.codigoPais = ?
+           ORDER BY p.Nombre_Personas
+           LIMIT 50`,
+          [countryCode],
+        ];
+      } else if (scope === "labor-actions" && filters.incidentId) {
+        const [laborCaseRows] = await databasePool.execute(
+          `SELECT i.codigoSolicitante AS applicantId
+           FROM ${databases.documents}.tblIncidentesInternos_Legal i
+           WHERE i.Cod_Incidente = ? AND i.codigoPais = ?
+           LIMIT 1`,
+          [filters.incidentId, countryCode],
+        );
+        const laborCase = laborCaseRows[0];
+        if (!laborCase) {
+          throw repositoryError("El caso laboral solicitado no existe.", "LABOR_CASE_NOT_FOUND", 404);
+        }
+        laborResponsiblePeopleQuery = [
+          `SELECT p.Codigo_Personas AS id, p.Nombre_Personas AS name
+           FROM ${databases.people}.tblPersonas p
+           WHERE p.CodigoPais = ? AND p.Codigo_Personas = ?
+           UNION
+           SELECT ua.codigoUsuario AS id, p.Nombre_Personas AS name
+           FROM ${databases.documents}.tblUsuariosAcciones ua
+           INNER JOIN ${databases.people}.tblPersonas p ON p.Codigo_Personas = ua.codigoUsuario
+           WHERE ua.isRRHH = 1 AND ua.codigoPais = ? AND ua.isActive = 1 AND p.isActivo = 1
+           ORDER BY name`,
+          [countryCode, laborCase.applicantId, countryCode],
+        ];
+      }
       const queries = [
         [`SELECT Codigo_Sucursal AS id, CONCAT_WS(' - ', Codigo_InternoSucursal, Nombre_Sucursal) AS name FROM ${databases.people}.tblSucursales WHERE Codigo_Pais = ? AND isAdministrativa = 0 AND isActivo = 1 ORDER BY OrdenSucursal`, [countryCode]],
-        [`SELECT codigoEstado AS id, nombreEstado AS name FROM ${databases.documents}.${statusesTable} WHERE isActive = 1 ${statusFilter} ORDER BY codigoEstado`, []],
+        [`SELECT codigoEstado AS id, nombreEstado AS name FROM ${databases.documents}.${statusesTable} ${activeStatusFilter} ${statusFilter} ORDER BY codigoEstado`, []],
         [`SELECT codigoMotivo AS id, nombreMotivo AS name FROM ${databases.documents}.tblMotivosIncidentes WHERE codigoPais = ? AND isActive = 1 AND ${external ? "COALESCE(isInterno, 0) = 0" : "isInterno = 1 AND codigoMotivo = 4"} ORDER BY nombreMotivo`, [countryCode]],
         [`SELECT codigoEnte AS id, nombreEnte AS name, isRegulatorio AS isRegulatory, codigoResponsable AS responsibleId, COALESCE(IsExterno, 0) AS isExternal FROM ${databases.documents}.tblEntesGubernamentales WHERE codigoPais = ? AND isActive = 1 AND ${external ? "1 = 1" : "COALESCE(IsExterno, 0) = 0"} ORDER BY nombreEnte`, [countryCode]],
         responsiblePeopleQuery,
-        [`SELECT p.Codigo_Personas AS id, p.Nombre_Personas AS name FROM ${databases.documents}.tblUsuariosAcciones ua INNER JOIN ${databases.people}.tblPersonas p ON p.Codigo_Personas = ua.codigoUsuario WHERE ua.codigoPais = ? AND ua.isRRHH = 1 AND ua.isActive = 1 AND p.isActivo = 1 ORDER BY p.Nombre_Personas`, [countryCode]],
+        legalResponsiblePeopleQuery,
         [`SELECT coditoNivel AS id, NivelPermiso AS name FROM ${databases.documents}.tblNivelPermisos WHERE isActive = 1 ORDER BY coditoNivel`, []],
-        [`SELECT codAccion AS id, NombreAccion AS name FROM ${databases.documents}.tblAcciones_Legal WHERE IsActivo = 1 ORDER BY NombreAccion`, []],
+        [`SELECT codAccion AS id, NombreAccion AS name FROM ${databases.documents}.tblAcciones_Legal ${activeActionFilter} ORDER BY NombreAccion`, []],
         [`SELECT CodPrioridad AS id, NombreEstado AS name FROM ${databases.documents}.tblPrioridadAccion_Legal WHERE isActive = 1 ORDER BY CodPrioridad`, []],
         [`SELECT Codigo_Personas AS id, Nombre_Personas AS name FROM ${databases.people}.tblPersonas WHERE CodigoPais = ? AND isActivo = 1 ${recipientBranchFilter} ORDER BY Nombre_Personas`, recipientParameters],
+        laborResponsiblePeopleQuery,
       ];
       const results = await Promise.all(queries.map(([sql, parameters]) => databasePool.execute(sql, parameters)));
       return {
@@ -1381,7 +1433,8 @@ export function createIncidentRepository(pool) {
         statuses: results[1][0],
         motives: results[2][0],
         agencies: results[3][0],
-        responsiblePeople: labor ? results[5][0] : results[4][0],
+        responsiblePeople: labor ? results[10][0] : results[4][0],
+        legalResponsiblePeople: results[5][0],
         levels: results[6][0],
         actions: results[7][0],
         priorities: results[8][0],

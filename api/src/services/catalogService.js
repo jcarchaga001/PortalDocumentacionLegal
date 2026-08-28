@@ -179,6 +179,13 @@ export function createCatalogService(repository, { now = () => new Date() } = {}
       return repository.listProviders(countryCode, normalizeProviderFilters(query));
     },
 
+    listProviderDestinations(countryCode, providerIdValue) {
+      return repository.listProviderDestinations(
+        countryCode,
+        requiredId(providerIdValue, "id"),
+      );
+    },
+
     async createProvider(auth, body) {
       const provider = normalizeProvider(body);
       const duplicate = await repository.findProviderByTaxNumber(auth.countryCode, provider.taxNumber);

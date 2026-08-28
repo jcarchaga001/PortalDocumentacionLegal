@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import express from "express";
 import helmet from "helmet";
 import { createPersonRepository } from "./repositories/personRepository.js";
+import { createCountryRepository } from "./repositories/countryRepository.js";
 import { createDashboardRepository } from "./repositories/dashboardRepository.js";
 import { createDocumentRepository } from "./repositories/documentRepository.js";
 import { createAgreementRepository } from "./repositories/agreementRepository.js";
@@ -44,11 +45,14 @@ export function createApp({ basePath, authDependencies = {} }) {
   const personRepository = authDependencies.authService
     ? null
     : authDependencies.personRepository || createPersonRepository();
+  const countryRepository = authDependencies.authService
+    ? null
+    : authDependencies.countryRepository || createCountryRepository();
   const passwordHashService = authDependencies.authService
     ? null
     : authDependencies.passwordHashService || createPasswordHashService();
   const authService = authDependencies.authService
-    || createAuthService({ personRepository, passwordHashService });
+    || createAuthService({ countryRepository, personRepository, passwordHashService });
   const passwordRecoveryService = authDependencies.passwordRecoveryService
     || (personRepository && passwordHashService
       ? createPasswordRecoveryService({ personRepository, passwordHashService })

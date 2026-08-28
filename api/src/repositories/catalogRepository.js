@@ -196,6 +196,35 @@ export function createCatalogRepository(pool) {
       `, `SELECT COUNT(*) AS total ${from} ${where}`, parameters, filters);
     },
 
+    async listProviderDestinations(countryCode, providerId) {
+      const databasePool = getPool();
+      const [[destinationRows], [countryRows]] = await Promise.all([
+        databasePool.execute(`
+          SELECT d.Cod_Destino AS id,
+                 b.Nombre_Banco AS bankName,
+                 d.NumeroCuenta AS accountNumber,
+                 COALESCE(d.IsDolares, 0) AS isDollars
+          FROM ${databases.providers}.tblDestinos d
+          LEFT JOIN ${databases.providers}.tblBancos b
+            ON d.Cod_Banco = b.Cod_Banco
+          WHERE d.CodPais = ?
+            AND d.codigoProveedor = ?
+            AND d.Cod_Estado = 5
+          LIMIT 500
+        `, [countryCode, providerId]),
+        databasePool.execute(`
+          SELECT MonedaSimbolo AS currencySymbol
+          FROM ${databases.people}.tblPaises
+          WHERE Codigo_Pais = ?
+          LIMIT 1
+        `, [countryCode]),
+      ]);
+      return {
+        items: destinationRows,
+        currencySymbol: countryRows[0]?.currencySymbol || "",
+      };
+    },
+
     async findProviderByTaxNumber(countryCode, taxNumber, excludedId) {
       const parameters = [countryCode, taxNumber];
       let exclusion = "";

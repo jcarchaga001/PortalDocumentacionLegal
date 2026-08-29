@@ -7,20 +7,23 @@ function csvValue(value) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
-async function loadDocumentExportRows(filters) {
+async function loadDocumentExportRows(filters, maxRows = Number.POSITIVE_INFINITY) {
   const rows = [];
   let page = 1;
   let total = 0;
+  const rowLimit = Number.isFinite(Number(maxRows)) && Number(maxRows) > 0
+    ? Math.floor(Number(maxRows))
+    : Number.POSITIVE_INFINITY;
 
   do {
     const result = await getDocuments({ ...filters, page, pageSize: 100 });
     if (!result.success) return result;
     const pageRows = result.data?.items || result.data || [];
-    rows.push(...pageRows);
+    rows.push(...pageRows.slice(0, rowLimit - rows.length));
     total = Number(result.data?.total ?? rows.length);
     if (pageRows.length === 0) break;
     page += 1;
-  } while (rows.length < total);
+  } while (rows.length < Math.min(total, rowLimit));
 
   return { success: true, message: "Documentos consultados correctamente.", data: rows, error: null };
 }
@@ -38,8 +41,15 @@ export async function downloadDocumentCsv({ filters, columns, fileName }) {
   return { success: true, message: "Archivo descargado correctamente.", data: { total: rows.length }, error: null };
 }
 
-export async function downloadDocumentXlsx({ filters, columns, fileName, sheetName = "Documentos" }) {
-  const result = await loadDocumentExportRows(filters);
+export async function downloadDocumentXlsx({
+  filters,
+  columns,
+  fileName,
+  sheetName = "Documentos",
+  legacyPlain = false,
+  maxRows = Number.POSITIVE_INFINITY,
+}) {
+  const result = await loadDocumentExportRows(filters, maxRows);
   if (!result.success) return result;
   if (result.data.length === 0) {
     return {
@@ -61,6 +71,7 @@ export async function downloadDocumentXlsx({ filters, columns, fileName, sheetNa
       column.key || column.dataIndex,
       column.value ? column.value(row) : row[column.dataIndex],
     ]))),
+    legacyPlain,
   });
   return {
     success: true,

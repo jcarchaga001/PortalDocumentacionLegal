@@ -27,6 +27,34 @@ test("historico administrativo restringe sucursales administrativas activas", as
   assert.deepEqual(listCall.parameters, [4]);
 });
 
+test("scrHistoricoAdministrativoDoc conserva joins, filtros y archivo del aggregate OML", async () => {
+  const { calls, repository } = repositoryRecorder();
+  await repository.list(4, normalizeFilters({
+    surface: "administrative-history",
+    documentType: "administrative",
+    includeInactive: "true",
+    branchId: "135",
+    categoryId: "2",
+    subcategoryId: "7",
+    statusId: "4",
+    search: " contrato ",
+    startDate: "2026-01-01",
+    expirationEndDate: "2026-12-31",
+    sortBy: "providerId",
+    sortDirection: "descend",
+  }));
+  const listCall = calls.find(({ sql }) => /LIMIT/.test(sql));
+  assert.match(listCall.sql, /LEFT JOIN .*tblSucursales s/);
+  assert.match(listCall.sql, /sc\.codigoSubcategoria = d\.subCategoriaDocumento\s+AND d\.categoriaDocumento = d\.categoriaDocumento/);
+  assert.match(listCall.sql, /d\.codigoArchivo AS attachmentId/);
+  assert.match(listCall.sql, /\(d\.codigoArchivo IS NOT NULL\) AS hasAttachment/);
+  assert.match(listCall.sql, /d\.isActive = 1/);
+  assert.match(listCall.sql, /s\.isAdministrativa = 1/);
+  assert.doesNotMatch(listCall.sql, /d\.fechaContrato >=|d\.fechaVencimiento <=/);
+  assert.match(listCall.sql, /ORDER BY d\.codigoProveedor DESC/);
+  assert.deepEqual(listCall.parameters, [4, 135, 2, 7, 4, "contrato", "contrato"]);
+});
+
 test("proximos a vencer incluye estado, rango y documentos inactivos como el legacy", async () => {
   const { calls, repository } = repositoryRecorder();
   await repository.list(4, normalizeFilters({
@@ -69,6 +97,21 @@ test("historicos conservan pagina y orden natural del aggregate legacy", async (
   assert.doesNotMatch(listCall.sql, /d\.codigoDocumento DESC/);
 });
 
+test("scrHistoricoDocumentos ordena Proveedor por codigo y muestra archivo por codigoArchivo", async () => {
+  const { calls, repository } = repositoryRecorder();
+  await repository.list(4, normalizeFilters({
+    surface: "branch-history",
+    sortBy: "providerId",
+    sortDirection: "descend",
+  }));
+  const listCall = calls.find(({ sql }) => /LIMIT/.test(sql));
+  assert.match(listCall.sql, /d\.codigoProveedor AS providerId/);
+  assert.match(listCall.sql, /d\.nivelPermiso AS levelId/);
+  assert.match(listCall.sql, /d\.codigoArchivo AS attachmentId/);
+  assert.match(listCall.sql, /\(d\.codigoArchivo IS NOT NULL\) AS hasAttachment/);
+  assert.match(listCall.sql, /ORDER BY d\.codigoProveedor DESC/);
+});
+
 test("catalogos cambian la lista principal segun documentType", async () => {
   const calls = [];
   const repository = createDocumentRepository({
@@ -83,6 +126,129 @@ test("catalogos cambian la lista principal segun documentType", async () => {
   const statusCall = calls.find(({ sql }) => /tblEstadoDocumentacion/.test(sql));
   assert.match(statusCall.sql, /codigoPais = \?/);
   assert.deepEqual(statusCall.parameters, [4]);
+});
+
+test("catalogos de scrHistoricoDocumentos conservan fuentes y limites del OML", async () => {
+  const calls = [];
+  const repository = createDocumentRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      return [[], []];
+    },
+  });
+
+  await repository.getHistoryCatalogs(4);
+
+  assert.equal(calls.length, 4);
+  assert.match(calls[0].sql, /tblSucursales/);
+  assert.match(calls[0].sql, /Codigo_Pais = \? AND isAdministrativa = 0/);
+  assert.match(calls[0].sql, /LIMIT 500/);
+  assert.doesNotMatch(calls[0].sql, /isActivo|ORDER BY/);
+  assert.match(calls[1].sql, /tblCategoriaDocumentos/);
+  assert.match(calls[1].sql, /LIMIT 50/);
+  assert.match(calls[2].sql, /tblSubcategoriaDocumentos/);
+  assert.match(calls[2].sql, /LIMIT 50/);
+  assert.match(calls[3].sql, /tblEstadoDocumentacion/);
+  assert.match(calls[3].sql, /LIMIT 50/);
+  assert.doesNotMatch(calls[3].sql, /isActive|ORDER BY/);
+  assert.deepEqual(calls.map(({ parameters }) => parameters), [[4], [4], [4], [4]]);
+});
+
+test("catalogos de scrHistoricoAdministrativoDoc conservan fuentes y limites del OML", async () => {
+  const calls = [];
+  const repository = createDocumentRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      return [[], []];
+    },
+  });
+
+  await repository.getAdministrativeHistoryCatalogs(4);
+
+  assert.equal(calls.length, 4);
+  assert.match(calls[0].sql, /tblSucursales/);
+  assert.match(calls[0].sql, /Codigo_Pais = \? AND isAdministrativa = 1/);
+  assert.match(calls[0].sql, /LIMIT 500/);
+  assert.doesNotMatch(calls[0].sql, /isActivo|ORDER BY/);
+  assert.match(calls[1].sql, /tblCategoriaDocumentos/);
+  assert.match(calls[1].sql, /LIMIT 50/);
+  assert.match(calls[2].sql, /tblSubcategoriaDocumentos/);
+  assert.match(calls[2].sql, /LIMIT 50/);
+  assert.match(calls[3].sql, /tblEstadoDocumentacion/);
+  assert.match(calls[3].sql, /LIMIT 50/);
+  assert.doesNotMatch(calls[3].sql, /isActive|ORDER BY/);
+  assert.deepEqual(calls.map(({ parameters }) => parameters), [[4], [4], [4], [4]]);
+});
+
+test("GetArchivo del historico no excluye el archivo por isActive", async () => {
+  const calls = [];
+  const repository = createDocumentRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      return [[], []];
+    },
+  });
+
+  await repository.getAttachment(4, 91);
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /a\.codigoArchivo = d\.codigoArchivo/);
+  assert.doesNotMatch(calls[0].sql, /a\.isActive = 1/);
+  assert.match(calls[0].sql, /d\.codigoPais = \? AND d\.isActive = 1/);
+  assert.deepEqual(calls[0].parameters, [91, 4]);
+});
+
+test("scrRegistroDocumento conserva fuentes, limites, etiquetas y orden del OML", async () => {
+  const calls = [];
+  const repository = createDocumentRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      return [[], []];
+    },
+  });
+
+  await repository.getRegistrationCatalogs(4);
+
+  assert.equal(calls.length, 5);
+  assert.match(calls[0].sql, /CONCAT\(Codigo_InternoSucursal, ' - ', Nombre_Sucursal\)/);
+  assert.match(calls[0].sql, /isAdministrativa = 0 AND isActivo = 1/);
+  assert.match(calls[0].sql, /ORDER BY Codigo_InternoSucursal\s+LIMIT 500/);
+  assert.deepEqual(calls[0].parameters, [4]);
+
+  assert.match(calls[1].sql, /isAdministrativa = 1 AND isActivo = 1/);
+  assert.match(calls[1].sql, /Codigo_InternoSucursal = 'FA00'/);
+  assert.match(calls[1].sql, /ORDER BY Codigo_InternoSucursal\s+LIMIT 500/);
+
+  assert.match(calls[2].sql, /tblProveedores/);
+  assert.match(calls[2].sql, /LIMIT 5000/);
+  assert.doesNotMatch(calls[2].sql, /ORDER BY/);
+
+  assert.match(calls[3].sql, /tblCategoriaDocumentos/);
+  assert.match(calls[3].sql, /LIMIT 500/);
+  assert.doesNotMatch(calls[3].sql, /ORDER BY/);
+
+  assert.match(calls[4].sql, /tblSubcategoriaDocumentos/);
+  assert.match(calls[4].sql, /codigoPais = \? AND codigoCategoria = \?/);
+  assert.match(calls[4].sql, /LIMIT 500/);
+  assert.deepEqual(calls[4].parameters, [4, 0]);
+});
+
+test("SearchSucursal3OnChanged refresca GetsubCategoria con pais y categoria", async () => {
+  const calls = [];
+  const repository = createDocumentRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      return [[{ id: 91, name: "Licencias", categoryId: 17 }], []];
+    },
+  });
+
+  assert.deepEqual(await repository.getRegistrationSubcategories(4, 17), [
+    { id: 91, name: "Licencias", categoryId: 17 },
+  ]);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /codigoPais = \? AND codigoCategoria = \?/);
+  assert.match(calls[0].sql, /LIMIT 500/);
+  assert.deepEqual(calls[0].parameters, [4, 17]);
 });
 
 test("registro documental usa transaccion, referencia correlativa y vincula el archivo", async () => {

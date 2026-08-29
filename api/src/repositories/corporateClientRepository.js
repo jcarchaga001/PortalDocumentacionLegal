@@ -39,26 +39,25 @@ export function createCorporateClientRepository(pool) {
     };
   }
 
-  async function replaceContacts(connection, clientId, contacts) {
-    await connection.execute(
-      `UPDATE ${databases.documents}.tblContactosClientesCorp SET isActivo = 0 WHERE CodClienteCorp = ?`,
-      [clientId],
-    );
+  async function createContacts(connection, clientId, contacts) {
     for (const contact of contacts) {
-      if (contact.id) {
-        const [result] = await connection.execute(
-          `UPDATE ${databases.documents}.tblContactosClientesCorp
-           SET Nombre = ?, Puesto = ?, Telefono = ?, Correo = ?, isActivo = 1
-           WHERE CodContacto = ? AND CodClienteCorp = ?`,
-          [contact.name, contact.position || null, contact.phone || null, contact.email || null, contact.id, clientId],
-        );
-        if (result.affectedRows) continue;
-      }
       await connection.execute(
         `INSERT INTO ${databases.documents}.tblContactosClientesCorp
            (CodClienteCorp, Nombre, Puesto, Telefono, Correo, isActivo)
          VALUES (?, ?, ?, ?, ?, 1)`,
-        [clientId, contact.name, contact.position || null, contact.phone || null, contact.email || null],
+        [clientId, contact.name, contact.position, contact.phone, contact.email],
+      );
+    }
+  }
+
+  async function applyContactChanges(connection, clientId, contacts, removedContactIds) {
+    await createContacts(connection, clientId, contacts.filter((contact) => !contact.id));
+    for (const contactId of removedContactIds) {
+      await connection.execute(
+        `UPDATE ${databases.documents}.tblContactosClientesCorp
+         SET isActivo = 0
+         WHERE CodContacto = ? AND CodClienteCorp = ?`,
+        [contactId, clientId],
       );
     }
   }
@@ -66,13 +65,8 @@ export function createCorporateClientRepository(pool) {
   return {
     async list(countryCode, filters) {
       const databasePool = pool || getDatabasePool();
-      const conditions = ["CodPais = ?"];
+      const conditions = ["CodPais = ?", "EstadoCliente = 1"];
       const parameters = [countryCode];
-      if (filters.activeOnly) conditions.push("EstadoCliente = 1");
-      if (filters.search) {
-        conditions.push("(Nombre_Cliente LIKE CONCAT('%', ?, '%') OR CodigoFA LIKE CONCAT('%', ?, '%') OR NombreContacto LIKE CONCAT('%', ?, '%'))");
-        parameters.push(filters.search, filters.search, filters.search);
-      }
       const where = `WHERE ${conditions.join(" AND ")}`;
       const offset = (filters.page - 1) * filters.pageSize;
       const [[items], [countRows]] = await Promise.all([
@@ -102,41 +96,54 @@ export function createCorporateClientRepository(pool) {
 
     getById,
 
+    async listContacts(countryCode, clientId) {
+      const databasePool = pool || getDatabasePool();
+      const [rows] = await databasePool.execute(
+        `SELECT contact.CodContacto AS id,
+                contact.CodClienteCorp AS clientId,
+                contact.Nombre AS name,
+                contact.Puesto AS position,
+                contact.Telefono AS phone,
+                contact.Correo AS email,
+                contact.isActivo AS isActive
+         FROM ${databases.documents}.tblContactosClientesCorp contact
+         INNER JOIN ${databases.documents}.tblClientesCorp client
+                 ON client.CodClientesCorp = contact.CodClienteCorp
+                AND client.CodPais = ?
+         WHERE contact.CodClienteCorp = ?
+           AND contact.isActivo = 1
+         LIMIT 500`,
+        [countryCode, clientId],
+      );
+      return rows.map((contact) => ({
+        ...contact,
+        isActive: Boolean(contact.isActive),
+      }));
+    },
+
     async create(countryCode, userId, client) {
       const databasePool = pool || getDatabasePool();
       const connection = await databasePool.getConnection();
       try {
         await connection.beginTransaction();
-        const [existing] = await connection.execute(
-          `SELECT CodClientesCorp AS id FROM ${databases.documents}.tblClientesCorp
-           WHERE CodPais = ? AND CodigoFA = ? LIMIT 1`,
-          [countryCode, client.faCode],
-        );
-        if (existing[0]) {
-          const error = new Error("Ya existe un cliente corporativo con ese CodigoFA.");
-          error.status = 409;
-          error.code = "CLIENT_CODE_EXISTS";
-          error.field = "faCode";
-          throw error;
-        }
         const [result] = await connection.execute(
           `INSERT INTO ${databases.documents}.tblClientesCorp
              (Nombre_Cliente, EstadoCliente, CodPais, NombreContacto, PuestoContacto,
               TelefonoContacto, CorreoContacto, UsuarioCreado, FechaCreado, CodigoFA,
               IsSuspendido, IsDescuento)
-           VALUES (?, 1, ?, ?, ?, ?, ?, ?, NOW(), ?, 0, 0)`,
+           VALUES (?, 1, ?, ?, ?, ?, ?, ?, CURDATE(), ?, 0, 0)`,
           [
             client.name,
             countryCode,
-            client.contactName || null,
-            client.contactPosition || null,
-            client.contactPhone || null,
-            client.contactEmail || null,
+            client.contactName,
+            client.contactPosition,
+            client.contactPhone,
+            client.contactEmail,
             userId,
             client.faCode,
           ],
         );
-        await replaceContacts(connection, result.insertId, client.contacts);
+        await createContacts(connection, result.insertId, client.contacts);
         await connection.commit();
         return getById(countryCode, result.insertId);
       } catch (error) {
@@ -152,43 +159,38 @@ export function createCorporateClientRepository(pool) {
       const connection = await databasePool.getConnection();
       try {
         await connection.beginTransaction();
-        const [duplicate] = await connection.execute(
-          `SELECT CodClientesCorp AS id FROM ${databases.documents}.tblClientesCorp
-           WHERE CodPais = ? AND CodigoFA = ? AND CodClientesCorp <> ? LIMIT 1`,
-          [countryCode, client.faCode, clientId],
+        const [current] = await connection.execute(
+          `SELECT CodClientesCorp AS id
+           FROM ${databases.documents}.tblClientesCorp
+           WHERE CodClientesCorp = ? AND CodPais = ?
+           FOR UPDATE`,
+          [clientId, countryCode],
         );
-        if (duplicate[0]) {
-          const error = new Error("Ya existe un cliente corporativo con ese CodigoFA.");
-          error.status = 409;
-          error.code = "CLIENT_CODE_EXISTS";
-          error.field = "faCode";
+        if (!current[0]) {
+          const error = new Error("El cliente corporativo solicitado no existe.");
+          error.status = 404;
+          error.code = "CORPORATE_CLIENT_NOT_FOUND";
           throw error;
         }
-        const [result] = await connection.execute(
+        await connection.execute(
           `UPDATE ${databases.documents}.tblClientesCorp
            SET Nombre_Cliente = ?, NombreContacto = ?, PuestoContacto = ?,
                TelefonoContacto = ?, CorreoContacto = ?, UsuarioActualiza = ?,
-               FechaActualiza = NOW(), CodigoFA = ?
+               FechaActualiza = CURDATE(), CodigoFA = ?
            WHERE CodClientesCorp = ? AND CodPais = ?`,
           [
             client.name,
-            client.contactName || null,
-            client.contactPosition || null,
-            client.contactPhone || null,
-            client.contactEmail || null,
+            client.contactName,
+            client.contactPosition,
+            client.contactPhone,
+            client.contactEmail,
             userId,
             client.faCode,
             clientId,
             countryCode,
           ],
         );
-        if (!result.affectedRows) {
-          const error = new Error("El cliente corporativo solicitado no existe.");
-          error.status = 404;
-          error.code = "CORPORATE_CLIENT_NOT_FOUND";
-          throw error;
-        }
-        await replaceContacts(connection, clientId, client.contacts);
+        await applyContactChanges(connection, clientId, client.contacts, client.removedContactIds);
         await connection.commit();
         return getById(countryCode, clientId);
       } catch (error) {
@@ -219,57 +221,28 @@ export function createCorporateClientRepository(pool) {
     async bulkUpsert(countryCode, userId, clients) {
       const databasePool = pool || getDatabasePool();
       const connection = await databasePool.getConnection();
-      let created = 0;
-      let updated = 0;
       try {
         await connection.beginTransaction();
         for (const client of clients) {
-          const [existing] = await connection.execute(
-            `SELECT CodClientesCorp AS id FROM ${databases.documents}.tblClientesCorp
-             WHERE CodPais = ? AND CodigoFA = ? LIMIT 1`,
-            [countryCode, client.faCode],
+          await connection.execute(
+            `INSERT INTO ${databases.documents}.tblClientesCorp
+               (Nombre_Cliente, EstadoCliente, CodPais, NombreContacto, PuestoContacto,
+                TelefonoContacto, CorreoContacto, UsuarioCreado, FechaCreado, CodigoFA)
+             VALUES (?, 1, ?, ?, ?, ?, ?, ?, CURDATE(), ?)`,
+            [
+              client.name,
+              countryCode,
+              client.contactName,
+              client.contactPosition,
+              client.contactPhone,
+              client.contactEmail,
+              userId,
+              client.faCode,
+            ],
           );
-          if (existing[0]) {
-            await connection.execute(
-              `UPDATE ${databases.documents}.tblClientesCorp
-               SET Nombre_Cliente = ?, NombreContacto = ?, PuestoContacto = ?,
-                   TelefonoContacto = ?, CorreoContacto = ?, EstadoCliente = 1,
-                   UsuarioActualiza = ?, FechaActualiza = NOW()
-               WHERE CodClientesCorp = ?`,
-              [
-                client.name,
-                client.contactName || null,
-                client.contactPosition || null,
-                client.contactPhone || null,
-                client.contactEmail || null,
-                userId,
-                existing[0].id,
-              ],
-            );
-            updated += 1;
-          } else {
-            await connection.execute(
-              `INSERT INTO ${databases.documents}.tblClientesCorp
-                 (Nombre_Cliente, EstadoCliente, CodPais, NombreContacto, PuestoContacto,
-                  TelefonoContacto, CorreoContacto, UsuarioCreado, FechaCreado, CodigoFA,
-                  IsSuspendido, IsDescuento)
-               VALUES (?, 1, ?, ?, ?, ?, ?, ?, NOW(), ?, 0, 0)`,
-              [
-                client.name,
-                countryCode,
-                client.contactName || null,
-                client.contactPosition || null,
-                client.contactPhone || null,
-                client.contactEmail || null,
-                userId,
-                client.faCode,
-              ],
-            );
-            created += 1;
-          }
         }
         await connection.commit();
-        return { processed: clients.length, created, updated };
+        return { processed: clients.length, created: clients.length, updated: 0 };
       } catch (error) {
         await connection.rollback();
         throw error;

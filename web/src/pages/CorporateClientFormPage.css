@@ -1,0 +1,52 @@
+.legacy-client-form-page {
+  width: 100%;
+  color: #272b30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.corporate-client-form-title { min-height: 40px; margin: 0 0 32px; color: #272b30; font-size: 32px; font-weight: 600; line-height: 40px; }
+.corporate-client-form { box-sizing: border-box; width: 100%; padding: 24px; border: 1px solid #dee2e6; border-radius: 4px; background: #fff; }
+.corporate-client-form fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.corporate-client-main-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+.corporate-client-field { min-width: 0; }
+.corporate-client-field label { display: block; height: 21px; margin: 0 0 8px; color: #4f575e; font-size: 14px; font-weight: 400; line-height: 21px; }
+.corporate-client-field label.is-mandatory::after { margin-left: 2px; color: #dc2020; content: "*"; }
+.corporate-client-field > input,
+.corporate-client-phone > input { display: block; box-sizing: border-box; width: 100%; height: 40px; margin: 0 0 24px; padding: 0 16px; border: 1px solid #ced4da; border-radius: 4px; outline: 0; color: #272b30; background: #fff; font: inherit; font-size: 14px; line-height: 17.5px; }
+.corporate-client-field > input:focus,
+.corporate-client-phone > input:focus { border-color: #4d5c66; }
+.corporate-client-field > input.not-valid { border-color: #dc2020; }
+.corporate-client-field > input:disabled { border-color: #dee2e6; color: #adb5bd; background: #f1f3f5; font-size: 18px; line-height: 22.5px; }
+.corporate-client-validation { display: block; height: 18px; margin-top: -21px; color: #dc2020; font-size: 12px; line-height: 18px; }
+.corporate-client-main-phone .corporate-client-phone { width: 223px; }
+.corporate-client-phone { position: relative; }
+.corporate-client-phone > input { position: relative; padding-left: 47px; }
+.corporate-client-phone.has-dial-code > input { padding-left: 83px; }
+.corporate-client-country { position: absolute; top: 1px; left: 1px; z-index: 1; display: flex; align-items: center; height: 38px; padding: 0; border: 0; color: #272b30; background: transparent; cursor: default; }
+.corporate-client-flag { display: block; width: 16px; height: 12px; margin-left: 8px; object-fit: cover; }
+.corporate-client-country-caret { width: 0; height: 0; margin: 0 6px; border-top: 4px solid #555; border-right: 3px solid transparent; border-left: 3px solid transparent; }
+.corporate-client-dial-code { margin-left: 1px; color: #4f575e; font-size: 14px; line-height: 21px; }
+.corporate-client-contacts-card { box-sizing: border-box; width: 100%; margin-top: 20px; padding: 24px; border: 1px solid #dee2e6; border-radius: 4px; background: #fff; }
+.corporate-client-contacts-card h2 { min-height: 32.5px; margin: 0 0 20px; color: #272b30; font-size: 26px; font-weight: 600; line-height: 32.5px; }
+.corporate-client-contact-grid { display: grid; grid-template-columns: 24.45% 15.95% 24.45% 24.45% 1fr; align-items: start; }
+.corporate-client-contact-grid > * { box-sizing: border-box; padding-right: 10px; }
+.corporate-client-contact-grid > :last-child { padding-right: 0; }
+.corporate-client-contact-action { display: flex; height: 69px; align-items: center; justify-content: center; }
+.corporate-client-contact-action a { display: inline-block; width: 24px; height: 28px; color: #4d5c66; line-height: 28px; }
+.corporate-client-contact-action .fa { width: 24px; height: 28px; font-size: 28px; line-height: 28px; }
+.corporate-client-contact-action .fa-plus-circle { color: #42c919; }
+.corporate-client-contact-action .fa-minus-circle { color: #222; }
+.corporate-client-form-actions { display: flex; width: 100%; margin-top: 30px; align-items: center; justify-content: flex-end; gap: 10px; }
+.corporate-client-form-actions button { display: inline-flex; box-sizing: border-box; height: 40px; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid #4d5c66; border-radius: 4px; font-size: 14px; font-weight: 600; line-height: 14px; cursor: pointer; }
+.corporate-client-cancel { color: #4d5c66; background: #fff; }
+.corporate-client-save { color: #fff; background: #4d5c66; }
+.corporate-client-saving-spinner { width: 14px; height: 14px; margin-right: 8px; border: 2px solid rgba(255, 255, 255, .45); border-top-color: #fff; border-radius: 50%; animation: corporate-client-spin .8s linear infinite; }
+.legacy-client-form-page .legacy-feedback-message.feedback-message-warning { color: #101213; }
+.legacy-client-form-page .legacy-feedback-message.feedback-message-warning .fa { color: #101213; }
+@keyframes corporate-client-spin { to { transform: rotate(360deg); } }
+@media (max-width: 760px) {
+  .corporate-client-main-grid { grid-template-columns: 1fr; }
+  .corporate-client-main-phone .corporate-client-phone { width: 100%; }
+  .corporate-client-contact-grid { grid-template-columns: 1fr; }
+  .corporate-client-contact-grid > * { padding-right: 0; }
+  .corporate-client-contact-action { justify-content: flex-start; }
+}

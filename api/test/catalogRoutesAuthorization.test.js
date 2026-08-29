@@ -7,6 +7,10 @@ import { createCatalogRouter } from "../src/routes/catalogRoutes.js";
 async function startCatalogServer(context, auth) {
   const calls = [];
   const service = {
+    async userPermissionLookups(countryCode) {
+      calls.push({ operation: "userPermissionLookups", countryCode });
+      return { branches: [], positions: [] };
+    },
     async listUsers(session, query) {
       calls.push({ operation: "listUsers", session, query });
       return { items: [], total: 0, page: 1, pageSize: 10 };
@@ -36,6 +40,7 @@ test("rutas de permisos rechazan lectura y mutacion para puestos no autorizados"
   const { calls, origin } = await startCatalogServer(context, { id: 30, positionCode: 32 });
 
   const listResponse = await fetch(`${origin}/users`);
+  const lookupsResponse = await fetch(`${origin}/users/lookups`);
   const updateResponse = await fetch(`${origin}/users/22/access`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -43,6 +48,7 @@ test("rutas de permisos rechazan lectura y mutacion para puestos no autorizados"
   });
 
   assert.equal(listResponse.status, 403);
+  assert.equal(lookupsResponse.status, 403);
   assert.equal(updateResponse.status, 403);
   assert.equal((await updateResponse.json()).error.code, "FORBIDDEN");
   assert.deepEqual(calls, []);
@@ -61,4 +67,17 @@ test("rutas de permisos permiten la mutacion a puestos 7 y 15", async (context) 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].operation, "setUserAccess");
   }
+});
+
+test("lookup dedicado de permisos usa el país autenticado para puestos autorizados", async (context) => {
+  const { calls, origin } = await startCatalogServer(context, {
+    id: 30,
+    positionCode: 7,
+    countryCode: 4,
+  });
+
+  const response = await fetch(`${origin}/users/lookups`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls, [{ operation: "userPermissionLookups", countryCode: 4 }]);
 });

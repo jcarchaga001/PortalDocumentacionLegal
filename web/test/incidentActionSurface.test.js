@@ -4,6 +4,9 @@ import {
   getIncidentActionMenu,
   getIncidentActionQueryPresentation,
   getIncidentActionSurface,
+  compareIncidentActionRows,
+  formatLegacyActionDate,
+  legacyIncidentActionFooterText,
   INCIDENT_ACTION_TYPE_OPERATION,
   incidentActionQueryErrorMessage,
   isIncidentActionQueryFailure,
@@ -13,9 +16,9 @@ import {
 
 test("conserva el switch OML de las cinco operaciones de acciones", () => {
   assert.deepEqual(INCIDENT_ACTION_TYPE_OPERATION, {
-    1: "cancel",
-    2: "close",
-    3: "reassign",
+    1: "close",
+    2: "reassign",
+    3: "cancel",
     4: "reschedule",
     5: "start",
   });
@@ -24,12 +27,14 @@ test("conserva el switch OML de las cinco operaciones de acciones", () => {
     getIncidentActionMenu({ statusId: 1 }).map(({ key, label, legacyType }) => ({ key, label, legacyType })),
     [
       { key: "start", label: "Iniciar Acción", legacyType: 5 },
-      { key: "cancel", label: "Anular Acción", legacyType: 1 },
-      { key: "close", label: "Cerrar Acción", legacyType: 2 },
-      { key: "reassign", label: "Reasignar Responsable", legacyType: 3 },
-      { key: "reschedule", label: "Reasignar Fecha", legacyType: 4 },
+      { key: "close", label: "Cerrar Acción", legacyType: 1 },
+      { key: "reassign", label: "Reasignar Usuario", legacyType: 2 },
+      { key: "reschedule", label: "Reasignar Fecha Entrega", legacyType: 4 },
+      { key: "cancel", label: "Anular Acción", legacyType: 3 },
     ],
   );
+  assert.deepEqual(getIncidentActionMenu({ statusId: 3 }), []);
+  assert.deepEqual(getIncidentActionMenu({ statusId: 5 }), []);
 });
 
 test("distingue el detalle lateral conectado únicamente en la pantalla externa", () => {
@@ -39,10 +44,14 @@ test("distingue el detalle lateral conectado únicamente en la pantalla externa"
   assert.equal(internal.sourceName, "scrMisAccionesInternoVisita");
   assert.equal(internal.incidentPredicate, "not tblIncidentesExternos.isExterno");
   assert.equal(internal.referenceDetail, false);
+  assert.equal(internal.controlCount, 18);
+  assert.equal(internal.title, "Acciones Incidentes Internos");
   assert.equal(external.sourceName, "scrMisAccionesExternos");
   assert.equal(external.incidentPredicate, "tblIncidentesExternos.isExterno");
   assert.equal(external.referenceDetail, true);
   assert.equal(external.detailAction, "OnClick");
+  assert.equal(external.controlCount, 19);
+  assert.equal(external.title, "Acciones Incidentes Externos");
 });
 
 test("muestra el fallo observable solo cuando la API identifica el error de consulta", () => {
@@ -63,12 +72,43 @@ test("muestra el fallo observable solo cuando la API identifica el error de cons
     pagination: { current: 2, total: 20 },
     errorCode: "INCIDENT_ACTION_QUERY_ERROR",
   }), {
-    rows: [],
+    rows: [{ id: 1 }],
     loading: false,
-    pagination: false,
+    pagination: { current: 2, total: 20 },
     showError: true,
     errorMessage: "Error executing query.",
   });
+});
+
+test("el fallo de una DataAction conserva la fila externa y su conteo defectuoso", () => {
+  const pagination = { current: 1, pageSize: 50, total: 370 };
+  const presentation = getIncidentActionQueryPresentation({
+    rows: [{ id: 91, incidentTypeId: 2, branchId: 370 }],
+    pagination,
+    errorCode: "INCIDENT_ACTION_QUERY_ERROR",
+  });
+
+  assert.deepEqual(presentation.rows, [{ id: 91, incidentTypeId: 2, branchId: 370 }]);
+  assert.equal(presentation.pagination, pagination);
+  assert.equal(presentation.showError, true);
+});
+
+test("formatea fechas y ordena como los HeaderCell del TableRecords", () => {
+  assert.equal(formatLegacyActionDate("2026-08-28"), "28 Aug 2026");
+  assert.equal(formatLegacyActionDate(""), "—");
+  const rows = [{ actionName: "Acción 10" }, { actionName: "Acción 2" }];
+  assert.deepEqual(rows.sort(compareIncidentActionRows("actionName")), [
+    { actionName: "Acción 2" },
+    { actionName: "Acción 10" },
+  ]);
+});
+
+test("conserva como un solo texto la Expression rota al pie", () => {
+  assert.equal(legacyIncidentActionFooterText([], 0), "0 __ 0___0");
+  assert.equal(legacyIncidentActionFooterText([
+    { incidentTypeId: 2, branchId: 312 },
+    { incidentTypeId: 2, branchId: 370 },
+  ], 0), "2 __ 0___370");
 });
 
 test("una consulta exitosa vacía o un fallo ajeno no inventan el toast legacy", () => {

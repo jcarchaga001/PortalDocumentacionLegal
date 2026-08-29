@@ -3,10 +3,9 @@ import {
   CommentOutlined,
   DownloadOutlined,
   MoreOutlined,
-  PlusOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import {
-  Alert,
   Button,
   Drawer,
   Dropdown,
@@ -15,14 +14,19 @@ import {
   List,
   Modal,
   Select,
-  Space,
   Table,
   Upload,
   message,
 } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useHistory, useLocation } from "react-router-dom";
+import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
 import { useAuth } from "../config/AuthContext.jsx";
+import { readLegacyIncidentDetailRequest } from "../config/legacyIncidentContext.js";
+import {
+  validateLegacyIncidentCommentFileName,
+  validateLegacyIncidentFileName,
+} from "../config/legacyFileContracts.js";
 import { downloadBlob } from "../services/fileHelpers.js";
 import { uploadIncidentFile } from "../services/incidentFileService.js";
 import {
@@ -30,26 +34,27 @@ import {
   closeIncident,
   createIncidentAction,
   getIncident,
+  getIncidentActionDetail,
   getIncidentCatalogs,
   updateIncidentAction,
 } from "../services/incidentService.js";
 import { downloadS3File } from "../services/tdS3Service.js";
 import { options, StatusTag } from "./IncidentUi.jsx";
-
-function readRequest(search) {
-  const query = new URLSearchParams(search);
-  const incidentId = Number(query.get("CodIncidente"));
-  const actionId = Number(query.get("actionId"));
-  const scope = query.get("scope") === "internal" ? "internal" : "external";
-  return {
-    incidentId: Number.isInteger(incidentId) && incidentId > 0 ? incidentId : null,
-    actionId: Number.isInteger(actionId) && actionId > 0 ? actionId : null,
-    scope,
-  };
-}
+import {
+  compareIncidentActionRows,
+  formatLegacyActionDate,
+  getIncidentActionMenu,
+} from "./incidentActionSurface.js";
+import {
+  canOpenIncidentDetailActionMenu,
+  formatLegacyIncidentDate,
+  formatLegacyIncidentTimestamp,
+  incidentDetailDisplay,
+  incidentDetailQueryFeedback,
+} from "./incidentDetailParity.js";
 
 function display(value) {
-  return value === null || value === undefined || value === "" ? "—" : value;
+  return incidentDetailDisplay(value);
 }
 
 function DetailField({ label, children }) {
@@ -65,20 +70,24 @@ export function IncidentDetailPage() {
   const history = useHistory();
   const location = useLocation();
   const { user } = useAuth();
-  const request = useMemo(() => readRequest(location.search), [location.search]);
-  const canCloseIncident = [7, 32].includes(Number(user?.positionCode)) || Number(user?.id) === 1578;
+  const request = useMemo(() => readLegacyIncidentDetailRequest(location.search), [location.search]);
   const [data, setData] = useState(null);
   const [catalogs, setCatalogs] = useState({ responsiblePeople: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentEditorOpen, setCommentEditorOpen] = useState(false);
   const [newActionOpen, setNewActionOpen] = useState(false);
   const [operation, setOperation] = useState(null);
   const [selectedAction, setSelectedAction] = useState(null);
-  const [historyAction, setHistoryAction] = useState(null);
+  const [actionDetailOpen, setActionDetailOpen] = useState(false);
+  const [actionDetailLoading, setActionDetailLoading] = useState(false);
+  const [selectedActionDetail, setSelectedActionDetail] = useState(null);
   const [closeOpen, setCloseOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionFile, setActionFile] = useState(null);
+  const [commentFile, setCommentFile] = useState(null);
+  const [commentSaving, setCommentSaving] = useState(false);
   const [newActionForm] = Form.useForm();
   const [operationForm] = Form.useForm();
   const [closeForm] = Form.useForm();
@@ -97,12 +106,28 @@ export function IncidentDetailPage() {
       getIncidentCatalogs(`${request.scope}-actions`, { incidentId: request.incidentId }),
     ]);
     if (detailResult.success) setData(detailResult.data);
-    else setError(detailResult.message || "No fue posible consultar el incidente.");
+    else setData(null);
+    setError(incidentDetailQueryFeedback(detailResult, catalogResult));
     if (catalogResult.success) setCatalogs(catalogResult.data || {});
     setLoading(false);
   }, [request.incidentId, request.scope]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function openActionDetail(action) {
+    setSelectedActionDetail(action);
+    setActionDetailOpen(true);
+    setActionDetailLoading(true);
+    const result = await getIncidentActionDetail(request.scope, request.incidentId, action.id);
+    if (result.success) {
+      setSelectedActionDetail(result.data);
+    } else {
+      setError(result.error?.code === "INCIDENT_ACTION_QUERY_ERROR"
+        ? "Error executing query."
+        : (result.message || "No fue posible consultar la acción."));
+    }
+    setActionDetailLoading(false);
+  }
 
   async function downloadEvidence(s3Key, fileName) {
     if (!s3Key) return;
@@ -133,6 +158,27 @@ export function IncidentDetailPage() {
     operationForm.resetFields();
     if (nextOperation === "reassign") operationForm.setFieldValue("responsibleId", action.responsibleId);
     if (nextOperation === "reschedule") operationForm.setFieldValue("dueDate", action.dueDate);
+  }
+
+  function acceptActionEvidence(file) {
+    const validation = validateLegacyIncidentFileName(file?.name);
+    if (!validation.valid) {
+      message.error(validation.message);
+      return Upload.LIST_IGNORE;
+    }
+    setActionFile(file);
+    operationForm.setFields([{ name: "evidence", errors: [] }]);
+    return false;
+  }
+
+  function acceptCommentAttachment(file) {
+    const validation = validateLegacyIncidentCommentFileName(file?.name);
+    if (!validation.valid) {
+      message.error(validation.message);
+      return Upload.LIST_IGNORE;
+    }
+    setCommentFile(file);
+    return false;
   }
 
   async function saveOperation() {
@@ -185,54 +231,93 @@ export function IncidentDetailPage() {
   async function saveComment() {
     try {
       const values = await commentForm.validateFields();
-      const result = await addIncidentComment(request.scope, request.incidentId, values);
+      setCommentSaving(true);
+      let attachment = {};
+      if (commentFile) {
+        const upload = await uploadIncidentFile(commentFile, {
+          scope: request.scope,
+          incidentId: String(request.incidentId),
+          purpose: "incident-comment",
+        });
+        if (!upload.success) return message.error(upload.message);
+        attachment = upload.data;
+      }
+      const result = await addIncidentComment(request.scope, request.incidentId, {
+        ...values,
+        ...attachment,
+      });
       if (!result.success) return message.error(result.message);
       setData(result.data);
       commentForm.resetFields();
+      setCommentFile(null);
+      setCommentEditorOpen(false);
     } catch {
       // Ant Design mantiene la validacion visible.
+    } finally {
+      setCommentSaving(false);
     }
   }
 
   const columns = [
-    { title: "Nombre Acción", dataIndex: "name", key: "name", width: 190 },
-    { title: "Descripción", dataIndex: "description", key: "description", width: 315 },
-    { title: "Responsable", dataIndex: "responsibleName", key: "responsibleName", width: 156 },
-    { title: "Fecha Inicio", dataIndex: "startDate", key: "startDate", width: 149 },
-    { title: "Fecha Probable Vencimieno", dataIndex: "dueDate", key: "dueDate", width: 154 },
+    {
+      title: "Nombre Acción",
+      dataIndex: "name",
+      key: "name",
+      width: 190.0125,
+      sorter: compareIncidentActionRows("name"),
+      render: (name, row) => (
+        <button type="button" className="legacy-incident-action-link" onClick={() => openActionDetail(row)}>
+          {display(name)}
+        </button>
+      ),
+    },
+    { title: "Descripción", dataIndex: "description", key: "description", width: 315.65, sorter: compareIncidentActionRows("description") },
+    { title: "Responsable", dataIndex: "responsibleName", key: "responsibleName", width: 154.5, sorter: compareIncidentActionRows("responsibleName") },
+    {
+      title: "Fecha Inicio",
+      dataIndex: "startDate",
+      key: "startDate",
+      width: 149.425,
+      sorter: compareIncidentActionRows("startDate"),
+      render: formatLegacyActionDate,
+    },
+    {
+      title: "Fecha Probable Vencimieno",
+      dataIndex: "dueDate",
+      key: "dueDate",
+      width: 153.875,
+      render: formatLegacyActionDate,
+    },
     {
       title: "Estado",
       dataIndex: "statusName",
       key: "statusName",
-      width: 168,
+      width: 168.7875,
+      sorter: compareIncidentActionRows("statusName"),
       render: (name, row) => <StatusTag id={row.statusId} name={name} />,
     },
     {
       title: "",
       key: "actions",
-      width: 51,
+      width: 50.95,
       render: (_, row) => {
-        const closed = [3, 5].includes(Number(row.statusId));
-        const canMutate = !closed && (
-          Number(user?.id) === 1
-          || Number(row.responsibleId) === Number(user?.id)
-        );
-        const items = [
-          ...(canMutate && Number(row.statusId) === 1 ? [{ key: "start", label: "Iniciar acción" }] : []),
-          ...(canMutate ? [
-            { key: "reassign", label: "Reasignar Responsable" },
-            { key: "reschedule", label: "Reasignar Fecha" },
-            { key: "close", label: "Cerrar acción" },
-            { key: "cancel", label: "Anular acción" },
-          ] : []),
-          { key: "history", label: "Histórico" },
-        ];
+        if (!canOpenIncidentDetailActionMenu(row, user)) return null;
+        const items = getIncidentActionMenu({ statusId: row.statusId }).map((item) => ({
+          key: item.key,
+          disabled: item.disabled,
+          label: (
+            <span className="legacy-incident-operation-item" style={{ color: item.color }}>
+              <i className={`fa fa-${item.icon}`} aria-hidden="true" />
+              {item.label}
+            </span>
+          ),
+        }));
         return (
           <Dropdown
             trigger={["click"]}
             menu={{
               items,
-              onClick: ({ key }) => key === "history" ? setHistoryAction(row) : openOperation(row, key),
+              onClick: ({ key }) => openOperation(row, key),
             }}
           >
             <Button type="text" icon={<MoreOutlined />} aria-label={`Opciones de ${row.name}`} />
@@ -242,10 +327,6 @@ export function IncidentDetailPage() {
     },
   ];
 
-  const selectedHistory = historyAction
-    ? (data?.actionHistory || []).filter((entry) => Number(entry.actionId) === Number(historyAction.id))
-    : [];
-
   return (
     <div className="legacy-incident-page legacy-incident-detail-page">
       <button type="button" className="legacy-incident-back" onClick={() => history.goBack()}>
@@ -253,12 +334,13 @@ export function IncidentDetailPage() {
       </button>
       <div className="legacy-incident-title-row">
         <h1>Detalle Incidente {request.scope === "external" ? "Externo" : "Interno"}</h1>
-        <Button type="text" icon={<CommentOutlined />} onClick={() => setCommentsOpen(true)}>
-          {data?.comments?.length || 0}
-        </Button>
+        <button type="button" className="legacy-incident-comments-trigger" onClick={() => setCommentsOpen(true)} aria-label="Comentarios del Incidente">
+          <CommentOutlined />
+          <span>{data?.comments?.length || 0}</span>
+        </button>
       </div>
 
-      {error && <Alert className="legacy-incident-alert" type="error" showIcon message={error} />}
+      <LegacyErrorFeedback message={error} />
       {loading && <div className="legacy-incident-loading">Cargando Información...</div>}
 
       {data && (
@@ -266,19 +348,26 @@ export function IncidentDetailPage() {
           <div className="legacy-incident-detail-card">
             <div className="legacy-incident-reference-row">
               <strong>N°: {display(data.reference)}</strong>
-              <StatusTag id={data.statusId} name={data.statusName} />
+              <button
+                type="button"
+                className="legacy-incident-status-link"
+                onClick={() => Number(data.statusId) !== 5 && setCloseOpen(true)}
+                aria-label="Estado del incidente"
+              >
+                <StatusTag id={data.statusId} name={data.statusName} />
+              </button>
             </div>
             <div className="legacy-incident-detail-grid">
               <DetailField label="Sucursal">{data.branchName}</DetailField>
               <DetailField label="Tipo Incidente">{data.typeName}</DetailField>
-              <DetailField label="Motivo Incidente">{data.motiveName}</DetailField>
+              <DetailField label="Motivo">{data.motiveName}</DetailField>
               <DetailField label="Categoría Incidente">{data.categoryId}</DetailField>
-              <DetailField label="Fecha de Registro">{data.registrationDate || data.openingDate}</DetailField>
+              <DetailField label="Fecha">{formatLegacyIncidentTimestamp(data.registrationDate || data.openingDate)}</DetailField>
               <DetailField label="Recibio Visita">{data.visitorName}</DetailField>
-              <DetailField label="Usuario Registró">{data.registeredByName}</DetailField>
+              <DetailField label="Usuario Registró">{data.visitorName}</DetailField>
               <DetailField label="Descargar archivo">
                 {data.s3Key ? (
-                  <Button type="link" icon={<DownloadOutlined />} onClick={() => downloadEvidence(data.s3Key)}>
+                  <Button type="link" onClick={() => downloadEvidence(data.s3Key)}>
                     Descargar Archivo...
                   </Button>
                 ) : "—"}
@@ -291,45 +380,102 @@ export function IncidentDetailPage() {
           <div className="legacy-incident-section-title">
             <h2>Acciones Generadas</h2>
             {Number(data.statusId) !== 5 && (
-              <Button type="link" icon={<PlusOutlined />} onClick={() => setNewActionOpen(true)}>
-                Nueva acción
+              <Button type="link" onClick={() => setNewActionOpen(true)}>
+                + Nueva acción
               </Button>
             )}
           </div>
           <Table
             className="legacy-incident-table"
             rowKey="id"
-            rowClassName={(row) => Number(row.id) === request.actionId ? "is-selected" : ""}
             columns={columns}
             dataSource={data.actions || []}
             pagination={false}
           />
-          {Number(data.statusId) !== 5 && canCloseIncident && (
-            <div className="legacy-form-actions legacy-incident-close-actions">
-              <Button danger onClick={() => setCloseOpen(true)}>Cerrar Incidente</Button>
-            </div>
-          )}
         </>
       )}
 
-      <Drawer title="Comentarios del Incidente" open={commentsOpen} onClose={() => setCommentsOpen(false)} width={430}>
-        <Form form={commentForm} layout="vertical">
+      <Drawer
+        className="legacy-incident-comments-drawer"
+        title="Comentarios del Incidente"
+        open={commentsOpen}
+        onClose={() => setCommentsOpen(false)}
+        width="30%"
+        extra={<Button type="link" onClick={() => setCommentEditorOpen(true)}>+Agregar</Button>}
+      >
+        {commentEditorOpen && <Form form={commentForm} layout="vertical" className="legacy-incident-comment-form">
           <Form.Item name="comment" rules={[{ required: true, whitespace: true, message: "Ingrese un comentario." }]}>
             <Input.TextArea rows={3} placeholder="Agregar comentario" />
           </Form.Item>
-          <Button type="primary" onClick={saveComment}>+ Agregar</Button>
-        </Form>
+          <Upload
+            beforeUpload={acceptCommentAttachment}
+            fileList={commentFile ? [commentFile] : []}
+            maxCount={1}
+            onRemove={() => setCommentFile(null)}
+            showUploadList={false}
+          >
+            <Button icon={<UploadOutlined />}>{commentFile?.name || "Adjuntar Archivo"}</Button>
+          </Upload>
+          <Button type="primary" loading={commentSaving} onClick={saveComment}>+ Agregar</Button>
+          <Button type="link" onClick={() => setCommentEditorOpen(false)}>Cancelar</Button>
+        </Form>}
         <List
           className="legacy-incident-comment-list"
           dataSource={data?.comments || []}
           locale={{ emptyText: "No hay comentarios." }}
           renderItem={(item) => (
-            <List.Item>
-              <List.Item.Meta title={item.userName || "Usuario"} description={item.registeredAt} />
-              <p>{item.comment}</p>
+            <List.Item
+              actions={item.s3Key ? [
+                <Button
+                  key="download-comment-attachment"
+                  type="text"
+                  icon={<DownloadOutlined />}
+                  aria-label="Descargar adjunto del comentario"
+                  onClick={() => downloadEvidence(item.s3Key, item.fileName)}
+                />,
+              ] : []}
+            >
+              <div className="legacy-incident-comment-entry">
+                <time>{formatLegacyIncidentDate(item.registeredAt)}</time>
+                <i className="fa fa-check" aria-hidden="true" />
+                <p>{item.comment}</p>
+                <span>{item.userName || "Usuario"}</span>
+              </div>
             </List.Item>
           )}
         />
+      </Drawer>
+
+      <Drawer
+        className="legacy-incident-action-drawer"
+        title={null}
+        open={actionDetailOpen}
+        onClose={() => setActionDetailOpen(false)}
+        width="30%"
+      >
+        {actionDetailLoading ? <div className="legacy-incident-loading">Cargando Información...</div> : (
+          <div className="legacy-incident-action-detail-card">
+            <div className="legacy-incident-action-detail-grid">
+              <DetailField label="Fecha de En">{formatLegacyIncidentDate(selectedActionDetail?.dueDate) || "1900-01-01"}</DetailField>
+              <DetailField label="Recibio Finalizado">{formatLegacyIncidentDate(selectedActionDetail?.closeDate) || "1900-01-01"}</DetailField>
+              <DetailField label="Usuario Responsable">{selectedActionDetail?.responsibleName}</DetailField>
+              <DetailField label="Administrador">{selectedActionDetail?.administratorName}</DetailField>
+            </div>
+            <div className="legacy-incident-action-comment">
+              <span>Comentario</span>
+              <p>{display(selectedActionDetail?.justification)}</p>
+            </div>
+            <button
+              type="button"
+              className="legacy-incident-action-download"
+              onClick={() => downloadEvidence(selectedActionDetail?.s3Key, selectedActionDetail?.fileName)}
+            >
+              {selectedActionDetail?.fileName
+                ? `${selectedActionDetail.fileName} (Descargar Archivo...)`
+                : "(Descargar Archivo...)"}
+            </button>
+          </div>
+        )}
       </Drawer>
 
       <Modal
@@ -374,21 +520,13 @@ export function IncidentDetailPage() {
           )}
           {operation === "close" && (
             <Form.Item name="evidence" label="Evidencia*">
-              <Upload beforeUpload={() => false} maxCount={1} onChange={({ fileList }) => setActionFile(fileList[0]?.originFileObj || null)}>
+              <Upload beforeUpload={acceptActionEvidence} maxCount={1} onRemove={() => setActionFile(null)}>
                 <Button icon={<DownloadOutlined />}>Adjuntar documento</Button>
               </Upload>
             </Form.Item>
           )}
           {operation === "start" && <p>La acción cambiará a En Ejecución.</p>}
         </Form>
-      </Modal>
-
-      <Modal title={`Histórico · ${historyAction?.name || "Acción"}`} open={Boolean(historyAction)} onCancel={() => setHistoryAction(null)} footer={null}>
-        <List
-          dataSource={selectedHistory}
-          locale={{ emptyText: "No hay movimientos registrados." }}
-          renderItem={(item) => <List.Item><List.Item.Meta title={item.description} description={`${item.userName || "Usuario"} · ${item.registeredAt || ""}`} /></List.Item>}
-        />
       </Modal>
 
       <Modal title="Cerrar Incidente" open={closeOpen} onCancel={() => setCloseOpen(false)} onOk={saveCloseIncident} okText="Cerrar Incidente" confirmLoading={saving}>

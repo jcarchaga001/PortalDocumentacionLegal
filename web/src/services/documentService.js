@@ -11,6 +11,7 @@ export function getAdministrativeDocuments(filters = {}) {
 export function getExpiringDocuments(filters = {}) {
   return getDocuments({
     ...filters,
+    surface: "expiring",
     documentType: "all",
     includeInactive: true,
     statusId: 4,
@@ -25,8 +26,23 @@ export function sendDocumentExpirationEmail(documentId) {
   });
 }
 
-export function getDocumentCatalogs(documentType = "branch") {
-  return portalApiRequest({ path: "/documents/catalogs", query: { documentType } });
+export function getDocumentCatalogs(documentType = "branch", options = {}) {
+  return portalApiRequest({ path: "/documents/catalogs", query: { documentType, ...options } });
+}
+
+export function getBranchDocumentHistoryCatalogs() {
+  return getDocumentCatalogs("branch", { surface: "branch-history" });
+}
+
+export function getAdministrativeDocumentHistoryCatalogs() {
+  return getDocumentCatalogs("administrative", { surface: "administrative-history" });
+}
+
+export function getDocumentRegistrationSubcategories(categoryId) {
+  return portalApiRequest({
+    path: "/documents/catalogs",
+    query: { surface: "registration-subcategories", categoryId },
+  });
 }
 
 export function createDocument(document) {
@@ -45,8 +61,12 @@ export function updateDocumentReference2(documentId, secondaryReference) {
   });
 }
 
-export function approveDocument(documentId) {
-  return portalApiRequest({ path: `/documents/${documentId}/approve`, method: "POST" });
+export function approveDocument(documentId, secondaryReference) {
+  return portalApiRequest({
+    path: `/documents/${documentId}/approve`,
+    method: "POST",
+    body: { secondaryReference },
+  });
 }
 
 export function rejectDocument(documentId) {
@@ -71,6 +91,10 @@ export function getDocumentAttachmentPreviewUrl(documentId) {
 
 export function getBranchDocumentDetail(branchId) {
   return portalApiRequest({ path: `/documents/branches/${branchId}` });
+}
+
+export function getBranchBookCatalog(branchId) {
+  return portalApiRequest({ path: `/documents/branches/${branchId}/books` });
 }
 
 export function createBranchDocument(branchId, document) {

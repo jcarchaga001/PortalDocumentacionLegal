@@ -54,8 +54,8 @@ export function createDocumentController(documentService) {
     },
     async approve(req, res, next) {
       try {
-        const document = await documentService.approve(req.auth, req.params.id);
-        res.json(normalizedSuccess("El documento fue aprobado con exito", document));
+        const document = await documentService.approve(req.auth, req.params.id, req.body);
+        res.json(normalizedSuccess("El documento fue aprobado con éxito", document));
       } catch (error) {
         next(error);
       }
@@ -88,6 +88,14 @@ export function createDocumentController(documentService) {
       try {
         const data = await documentService.branch(req.auth.countryCode, req.params.branchId);
         res.json(normalizedSuccess("Detalle de sucursal consultado correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+    async branchBooks(req, res, next) {
+      try {
+        const data = await documentService.branchBooks(req.auth.countryCode, req.params.branchId);
+        res.json(normalizedSuccess("Libros de sucursal consultados correctamente.", data));
       } catch (error) {
         next(error);
       }

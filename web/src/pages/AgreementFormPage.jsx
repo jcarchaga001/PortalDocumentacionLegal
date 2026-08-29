@@ -1,11 +1,10 @@
-import { InboxOutlined } from "@ant-design/icons";
-import { Button, Checkbox, DatePicker, Form, Input, InputNumber, Radio, Select, Upload, message } from "antd";
-import dayjs from "dayjs";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useHistory, useLocation } from "react-router-dom";
+import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
 import {
   LEGACY_AGREEMENT_UPLOAD,
   legacyAgreementStoredExtension,
+  validateLegacyAgreementCandidate,
 } from "../config/legacyFileContracts.js";
 import { ROUTES } from "../routes/routePaths.js";
 import {
@@ -16,212 +15,442 @@ import {
 } from "../services/agreementService.js";
 import { fileToBase64 } from "../services/fileHelpers.js";
 import { uploadFileToS3 } from "../services/tdS3Service.js";
+import {
+  AGREEMENT_FORM_FEEDBACK,
+  EMPTY_AGREEMENT_FORM,
+  agreementToForm,
+  legacyBranchLabel,
+  recalculatePromissoryState,
+  validateAgreementForm,
+} from "./agreementFormParity.js";
+import "./AgreementFormPage.css";
 
 function agreementIdFromSearch(search) {
   const value = Number(new URLSearchParams(search).get("CodConvenio"));
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
+function todayLocal() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function optionLabel(option) {
+  return option?.name || "";
+}
+
+function LegacySearchSelect({ id, value, options, placeholder, onChange, getLabel = optionLabel }) {
+  const selected = options.find((option) => String(option.id) === String(value));
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selectedLabel = selected ? getLabel(selected) : "";
+  const visibleOptions = options
+    .filter((option) => getLabel(option).toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+    .slice(0, 100);
+
+  return (
+    <div className="agreement-search-select">
+      <input
+        id={id}
+        className="agreement-search-select__control"
+        type="text"
+        autoComplete="off"
+        placeholder={placeholder}
+        value={open ? query : selectedLabel}
+        onFocus={() => { setQuery(""); setOpen(true); }}
+        onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+      />
+      <i className="fa fa-chevron-down agreement-select-caret" aria-hidden="true" />
+      {open ? (
+        <div className="agreement-select-options" role="listbox">
+          {visibleOptions.map((option) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={String(option.id) === String(value)}
+              className={`agreement-select-option${String(option.id) === String(value) ? " is-selected" : ""}`}
+              key={option.id}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => { onChange(String(option.id)); setOpen(false); setQuery(""); }}
+            >
+              {getLabel(option)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LegacyMultiSelect({ id, values, options, placeholder, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selectedLabels = options
+    .filter((option) => values.includes(String(option.id)))
+    .map(legacyBranchLabel);
+  const visibleOptions = options
+    .filter((option) => legacyBranchLabel(option).toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+    .slice(0, 100);
+
+  function toggle(optionId) {
+    const normalizedId = String(optionId);
+    onChange(values.includes(normalizedId)
+      ? values.filter((value) => value !== normalizedId)
+      : [...values, normalizedId]);
+  }
+
+  return (
+    <div className="agreement-multi-select">
+      <input
+        id={id}
+        className="agreement-multi-select__control"
+        type="text"
+        autoComplete="off"
+        placeholder={placeholder}
+        value={open ? query : selectedLabels.join(", ")}
+        onFocus={() => { setQuery(""); setOpen(true); }}
+        onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+      />
+      <i className="fa fa-chevron-down agreement-select-caret" aria-hidden="true" />
+      {open ? (
+        <div className="agreement-select-options" role="listbox" aria-multiselectable="true">
+          {visibleOptions.map((option) => {
+            const selected = values.includes(String(option.id));
+            return (
+              <button
+                type="button"
+                role="option"
+                aria-selected={selected}
+                className={`agreement-select-option${selected ? " is-selected" : ""}`}
+                key={option.id}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => toggle(option.id)}
+              >
+                {legacyBranchLabel(option)}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Checkbox({ id, checked, onChange, label }) {
+  return (
+    <label className="agreement-form-checkbox" htmlFor={id} aria-label={label}>
+      <input id={id} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span className="agreement-form-checkbox-mark" aria-hidden="true" />
+    </label>
+  );
+}
+
+function CurrencyInput({ value, onChange }) {
+  const [focused, setFocused] = useState(false);
+  const normalizedValue = String(value ?? "").replaceAll(",", "");
+  const number = Number(normalizedValue);
+  const displayValue = focused || normalizedValue === "" || !Number.isFinite(number)
+    ? normalizedValue
+    : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(number);
+  return (
+    <input
+      id="Input_LimiteCredito"
+      className="agreement-form-input"
+      type="text"
+      inputMode="decimal"
+      value={displayValue}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(event) => onChange(event.target.value.replaceAll(",", ""))}
+    />
+  );
+}
+
 export function AgreementFormPage() {
   const history = useHistory();
   const location = useLocation();
   const agreementId = useMemo(() => agreementIdFromSearch(location.search), [location.search]);
-  const [form] = Form.useForm();
   const [catalogs, setCatalogs] = useState({ clients: [], branches: [], accountManagers: [] });
+  const [values, setValues] = useState({ ...EMPTY_AGREEMENT_FORM });
   const [files, setFiles] = useState([]);
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState([]);
   const [loading, setLoading] = useState(Boolean(agreementId));
   const [saving, setSaving] = useState(false);
-  const isIndefinite = Form.useWatch("isIndefinite", form);
-  const promissoryState = Form.useWatch("promissoryState", form);
-  const isPromissoryNoteIndefinite = Form.useWatch("isPromissoryNoteIndefinite", form);
+  const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
     let active = true;
-    Promise.all([getAgreementCatalogs(), agreementId ? getAgreement(agreementId) : Promise.resolve(null)]).then(([catalogResult, agreementResult]) => {
+    setLoading(Boolean(agreementId));
+    Promise.all([
+      getAgreementCatalogs(),
+      agreementId ? getAgreement(agreementId) : Promise.resolve(null),
+    ]).then(([catalogResult, agreementResult]) => {
       if (!active) return;
-      if (catalogResult.success) setCatalogs(catalogResult.data || {});
+      if (catalogResult.success) {
+        setCatalogs({ clients: [], branches: [], accountManagers: [], ...(catalogResult.data || {}) });
+      } else {
+        setFeedback({ type: "error", message: AGREEMENT_FORM_FEEDBACK.queryFailure });
+      }
       if (agreementResult?.success) {
-        const agreement = agreementResult.data;
-        form.setFieldsValue({
-          ...agreement,
-          startDate: agreement.startDate ? dayjs(agreement.startDate) : null,
-          endDate: agreement.endDate ? dayjs(agreement.endDate) : null,
-          promissoryNoteExpirationDate: agreement.promissoryNoteExpirationDate
-            ? dayjs(agreement.promissoryNoteExpirationDate)
-            : null,
-          promissoryState: !agreement.hasPromissoryNote
-            ? "no"
-            : agreement.isPromissoryNoteExpired ? "expired" : "yes",
-        });
-        setFiles((agreement.attachments || []).map((attachment) => ({
+        setValues(agreementToForm(agreementResult.data));
+        setFiles((agreementResult.data?.attachments || []).map((attachment) => ({
           uid: `existing-${attachment.id}`,
           name: attachment.fileName,
-          status: "done",
           attachmentId: attachment.id,
+          s3Key: attachment.s3Key,
           isExisting: true,
         })));
       } else if (agreementResult && !agreementResult.success) {
-        message.error(agreementResult.message);
+        setFeedback({ type: "error", message: AGREEMENT_FORM_FEEDBACK.queryFailure });
       }
+      setLoading(false);
+    }).catch(() => {
+      if (!active) return;
+      setFeedback({ type: "error", message: AGREEMENT_FORM_FEEDBACK.queryFailure });
       setLoading(false);
     });
     return () => { active = false; };
-  }, [agreementId, form]);
+  }, [agreementId]);
+
+  const setValue = (name, value) => setValues((current) => ({ ...current, [name]: value }));
+
+  function cancel() {
+    history.push(agreementId
+      ? `${ROUTES.agreementDetail}?CodConvenio=${agreementId}`
+      : ROUTES.agreements);
+  }
+
+  function addFiles(event) {
+    const candidates = Array.from(event.target.files || []);
+    const accepted = [];
+    for (const file of candidates) {
+      const validation = validateLegacyAgreementCandidate(file, files.length + accepted.length);
+      if (validation.valid) {
+        accepted.push({ uid: `new-${Date.now()}-${accepted.length}`, name: file.name, file, isExisting: false });
+      }
+    }
+    if (accepted.length) setFiles((current) => [...current, ...accepted]);
+    event.target.value = "";
+  }
+
+  function removeFile(file) {
+    if (file.isExisting && Number(file.attachmentId) > 0) {
+      setRemovedAttachmentIds((current) => current.includes(Number(file.attachmentId))
+        ? current
+        : [...current, Number(file.attachmentId)]);
+    }
+    setFiles((current) => current.filter((entry) => entry.uid !== file.uid));
+  }
 
   async function uploadAttachments() {
     const attachments = [];
-    const failures = [];
-    for (const entry of files.filter((file) => file.originFileObj)) {
-      const file = entry.originFileObj;
+    for (const entry of files.filter((file) => !file.isExisting)) {
       const uploadResult = await uploadFileToS3({
-        fileBase64: await fileToBase64(file),
-        fileName: file.name,
-        contentType: file.type || "application/octet-stream",
+        fileBase64: await fileToBase64(entry.file),
+        fileName: entry.file.name,
+        contentType: entry.file.type || "application/octet-stream",
         metadata: {
           module: "DocumentacionLegal",
           domain: "agreements",
           ...(agreementId ? { agreementId: String(agreementId) } : {}),
         },
       });
-      if (!uploadResult.success) {
-        failures.push(file.name);
-        continue;
-      }
-      const s3Key = uploadResult.data?.s3Key;
-      if (!s3Key) {
-        failures.push(file.name);
-        continue;
-      }
-      const extension = legacyAgreementStoredExtension(file.name);
+      const s3Key = uploadResult.success ? uploadResult.data?.s3Key : "";
+      if (!s3Key) throw new Error(uploadResult.message || "S3_UPLOAD_FAILED");
       attachments.push({
         s3Key,
-        fileName: file.name,
-        extension,
+        fileName: entry.file.name,
+        extension: legacyAgreementStoredExtension(entry.file.name),
       });
     }
-    return { attachments, failures };
+    return attachments;
   }
 
-  async function submit(values) {
+  async function submit(event) {
+    event.preventDefault();
+    setFeedback(null);
+    const validationMessage = validateAgreementForm(values, files.length);
+    if (validationMessage) {
+      setFeedback({ type: "warning", message: validationMessage });
+      return;
+    }
+
     setSaving(true);
-    const hasPromissoryNote = values.promissoryState !== "no";
-    if (hasPromissoryNote && files.length === 0) {
-      message.error("Afirmo que el cliente tiene pagare, porfavor agregar el archivo.");
-      setSaving(false);
-      return;
-    }
-    let uploadBatch;
+    let attachments;
     try {
-      uploadBatch = await uploadAttachments();
-    } catch {
-      message.error("No fue posible leer o cargar los archivos del convenio.");
+      attachments = await uploadAttachments();
+    } catch (error) {
+      setFeedback({ type: "error", message: error.message === "S3_UPLOAD_FAILED"
+        ? AGREEMENT_FORM_FEEDBACK.queryFailure
+        : error.message });
       setSaving(false);
       return;
     }
-    const { attachments, failures } = uploadBatch;
-    if (failures.length) {
-      message.error(`No se cargaron: ${failures.join(", ")}`);
-      setSaving(false);
-      return;
-    }
+
     const payload = {
-      ...values,
-      startDate: values.startDate?.format("YYYY-MM-DD"),
-      endDate: values.endDate?.format("YYYY-MM-DD"),
-      hasPromissoryNote,
+      clientId: Number(values.clientId),
+      accountManagerCode: values.accountManagerCode,
+      branchIds: values.branchIds.map(Number),
+      creditDays: Number(values.creditDays),
+      creditLimit: Number(String(values.creditLimit).replaceAll(",", "")),
+      startDate: values.startDate,
+      endDate: values.endDate || undefined,
+      hasPromissoryNote: values.promissoryState !== "no",
       isPromissoryNoteExpired: values.promissoryState === "expired",
-      promissoryNoteExpirationDate: values.promissoryNoteExpirationDate?.format("YYYY-MM-DD"),
+      promissoryNoteExpirationDate: values.promissoryNoteExpirationDate || undefined,
+      isDollar: values.isDollar,
+      isIndefinite: values.isIndefinite,
+      isPromissoryNoteIndefinite: values.isPromissoryNoteIndefinite,
+      observation: values.observation,
       removedAttachmentIds,
       attachments,
     };
-    delete payload.promissoryState;
     const result = agreementId
       ? await updateAgreement(agreementId, payload)
       : await createAgreement(payload);
     if (!result.success) {
-      message.error(result.message);
+      setFeedback({ type: "error", message: result.message || AGREEMENT_FORM_FEEDBACK.queryFailure });
       setSaving(false);
       return;
     }
-    const savedId = result.data?.id || agreementId;
-    message.success(agreementId ? "Convenio actualizado correctamente." : "Convenio creado correctamente.");
-    history.replace(`${ROUTES.agreementDetail}?CodConvenio=${savedId}`);
+    cancel();
   }
 
-  const options = (items) => (items || []).map((item) => ({ value: item.id, label: item.name }));
+  const selectedBranches = catalogs.branches.filter((branch) => values.branchIds.includes(String(branch.id)));
+  const promissoryDateDisabled = values.promissoryState === "no" || values.isPromissoryNoteIndefinite;
 
   return (
-    <div className="legacy-form-page">
-      <h1>{agreementId ? "Editar Convenio" : "Nuevo Convenio"}</h1>
-      <Form
-        form={form}
-        layout="vertical"
-        className="legacy-business-form"
-        initialValues={{ creditDays: 0, creditLimit: 0, promissoryState: "no", branchIds: [], isDollar: false, isIndefinite: false, isPromissoryNoteIndefinite: false }}
-        onFinish={submit}
-        disabled={loading}
-      >
-        <div className="legacy-business-grid">
-          <Form.Item label="Nombre del Cliente" name="clientId" rules={[{ required: true, message: "Seleccione un cliente." }]}>
-            <Select showSearch optionFilterProp="label" placeholder="Seleccione un Cliente..." options={options(catalogs.clients)} />
-          </Form.Item>
-          <Form.Item label="Días de Crédito" name="creditDays" rules={[{ required: true }]}><InputNumber min={0} max={3650} className="full-width" /></Form.Item>
-          <Form.Item label="Fecha Inicial" name="startDate" rules={[{ required: true }]}><DatePicker className="full-width" /></Form.Item>
-          <Form.Item label="¿Tiene Pagaré?" name="promissoryState">
-            <Radio.Group options={[{ label: "Sí", value: "yes" }, { label: "No", value: "no" }, { label: "Vencido", value: "expired" }]} />
-          </Form.Item>
-          <Form.Item label="Sucursales que Facturan" name="branchIds" rules={[{ required: true, message: "Seleccione al menos 1 sucursal que facture." }]}>
-            <Select mode="multiple" showSearch optionFilterProp="label" placeholder="Seleccione las Sucursales..." options={options(catalogs.branches)} />
-          </Form.Item>
-          <Form.Item label="Gestor de Cuenta" name="accountManagerCode" rules={[{ required: true, message: "Seleccione al Gestor de la cuenta." }]}>
-            <Select showSearch allowClear optionFilterProp="label" placeholder="Seleccione al gestor..." options={options(catalogs.accountManagers)} />
-          </Form.Item>
-          <Form.Item label="Límite de Crédito" required>
-            <div className="legacy-inline-control">
-              <Form.Item name="creditLimit" noStyle rules={[{ required: true }]}><InputNumber min={0} precision={2} className="full-width" /></Form.Item>
-              <Form.Item name="isDollar" valuePropName="checked" noStyle><Checkbox>En Dólares</Checkbox></Form.Item>
-            </div>
-          </Form.Item>
-          <Form.Item label="Fecha Final" required={!isIndefinite}>
-            <div className="legacy-inline-control">
-              <Form.Item name="endDate" noStyle rules={isIndefinite ? [] : [{ required: true, message: "Seleccione la fecha final." }]}><DatePicker disabled={isIndefinite} className="full-width" /></Form.Item>
-              <Form.Item name="isIndefinite" valuePropName="checked" noStyle><Checkbox>Indefinido</Checkbox></Form.Item>
-            </div>
-          </Form.Item>
-          {promissoryState !== "no" ? (
-            <Form.Item label="Fecha Vencimiento Pagaré" required={!isPromissoryNoteIndefinite}>
-              <div className="legacy-inline-control">
-                <Form.Item name="promissoryNoteExpirationDate" noStyle rules={isPromissoryNoteIndefinite ? [] : [{ required: true }]}><DatePicker disabled={isPromissoryNoteIndefinite} className="full-width" /></Form.Item>
-                <Form.Item name="isPromissoryNoteIndefinite" valuePropName="checked" noStyle><Checkbox>Indefinido</Checkbox></Form.Item>
+    <div className="agreement-form-page" aria-busy={loading || saving}>
+      <LegacyErrorFeedback message={feedback?.message} type={feedback?.type} />
+      <div className="agreement-form-title">{agreementId ? "Editar Convenio" : "Nuevo Convenio"}</div>
+
+      <form className="agreement-form-card" onSubmit={submit} noValidate>
+        <fieldset disabled={loading || saving}>
+          <div className="agreement-form-columns">
+            <div>
+              <div className="agreement-form-field">
+                <label htmlFor="ClienteCorp">Nombre del Cliente</label>
+                <LegacySearchSelect id="ClienteCorp" value={values.clientId} options={catalogs.clients} placeholder="Seleccion un Cliente..." onChange={(value) => setValue("clientId", value)} />
               </div>
-            </Form.Item>
-          ) : <div />}
-        </div>
-        <Form.Item label="Observación" name="observation"><Input.TextArea rows={4} /></Form.Item>
-        <Upload.Dragger
-          multiple
-          accept={LEGACY_AGREEMENT_UPLOAD.accept}
-          maxCount={LEGACY_AGREEMENT_UPLOAD.maxFiles}
-          fileList={files}
-          beforeUpload={() => false}
-          onChange={({ fileList }) => setFiles(fileList)}
-          onRemove={(file) => {
-            if (file.isExisting && file.attachmentId) {
-              setRemovedAttachmentIds((current) => [...new Set([...current, file.attachmentId])]);
-            }
-            return true;
-          }}
-        >
-          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p>{LEGACY_AGREEMENT_UPLOAD.prompt}</p>
-          <p className="ant-upload-hint">{LEGACY_AGREEMENT_UPLOAD.browseText}</p>
-        </Upload.Dragger>
-        <div className="legacy-form-actions">
-          <Button danger onClick={() => history.push(ROUTES.agreements)}>Cancelar</Button>
-          <Button type="primary" htmlType="submit" loading={saving}>{agreementId ? "Actualizar convenio" : "Crear convenio"}</Button>
-        </div>
-      </Form>
+              <div className="agreement-form-field">
+                <label className="is-mandatory" htmlFor="Input_DiasCredito">Días de Crédito</label>
+                <input id="Input_DiasCredito" className="agreement-form-input" type="number" min="0" step="1" value={values.creditDays} onChange={(event) => setValue("creditDays", event.target.value)} />
+              </div>
+              <div className="agreement-form-field">
+                <label className="is-mandatory" htmlFor="Input_FechaInicial">Fecha Inicial</label>
+                <input id="Input_FechaInicial" className="agreement-form-input" type="date" value={values.startDate} onChange={(event) => setValue("startDate", event.target.value)} />
+              </div>
+              <div className="agreement-form-field agreement-form-radio-field">
+                <label className="is-mandatory">¿Tiene Pagaré?</label>
+                <div className="agreement-form-radios" role="radiogroup">
+                  {[["yes", "Si"], ["no", "No"], ["expired", "Vencido"]].map(([value, label]) => (
+                    <label className="agreement-form-radio" key={value}>
+                      <input type="radio" name="HasPagare" value={value} checked={values.promissoryState === value} onChange={() => setValue("promissoryState", value)} />
+                      <span className="agreement-form-radio-mark" aria-hidden="true" />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="agreement-form-field">
+                <label htmlFor="Sucursales">Sucursales que Facturan</label>
+                <LegacyMultiSelect id="Sucursales" values={values.branchIds} options={catalogs.branches} placeholder="Seleccion las Sucursales..." onChange={(value) => setValue("branchIds", value)} />
+              </div>
+            </div>
+
+            <div>
+              <div className="agreement-form-field">
+                <label htmlFor="GestorCuenta">Gestor de Cuenta</label>
+                <LegacySearchSelect id="GestorCuenta" value={values.accountManagerCode} options={catalogs.accountManagers} placeholder="Seleccion al gestor..." onChange={(value) => setValue("accountManagerCode", value)} />
+              </div>
+              <div className="agreement-form-composite">
+                <div className="agreement-form-composite-labels">
+                  <label className="is-mandatory" htmlFor="Input_LimiteCredito">Límite de Crédito</label>
+                  <label htmlFor="IsDollar">En Dólares</label>
+                </div>
+                <div className="agreement-form-composite-row">
+                  <CurrencyInput value={values.creditLimit} onChange={(value) => setValue("creditLimit", value)} />
+                  <Checkbox id="IsDollar" label="En Dólares" checked={values.isDollar} onChange={(value) => setValue("isDollar", value)} />
+                </div>
+              </div>
+              <div className="agreement-form-composite">
+                <div className="agreement-form-composite-labels">
+                  <label className="is-mandatory" htmlFor="Input_FechaFinal">Fecha Final</label>
+                  <label htmlFor="Checkbox1">Indefinido</label>
+                </div>
+                <div className="agreement-form-composite-row">
+                  <input id="Input_FechaFinal" className="agreement-form-input" type="date" disabled={values.isIndefinite} value={values.endDate} onChange={(event) => setValue("endDate", event.target.value)} />
+                  <Checkbox id="Checkbox1" label="Indefinido" checked={values.isIndefinite} onChange={(value) => setValue("isIndefinite", value)} />
+                </div>
+              </div>
+              <div className="agreement-form-composite">
+                <div className="agreement-form-composite-labels">
+                  <label htmlFor="Input_FechaInicial2">Fecha Vencimiento Pagaré</label>
+                  <label htmlFor="Checkbox2">Indefinido</label>
+                </div>
+                <div className="agreement-form-composite-row">
+                  <input
+                    id="Input_FechaInicial2"
+                    className="agreement-form-input"
+                    type="date"
+                    disabled={promissoryDateDisabled}
+                    value={values.promissoryNoteExpirationDate}
+                    onChange={(event) => setValues((current) => ({
+                      ...current,
+                      promissoryNoteExpirationDate: event.target.value,
+                      promissoryState: recalculatePromissoryState(current.promissoryState, event.target.value, todayLocal()),
+                    }))}
+                  />
+                  <Checkbox id="Checkbox2" label="Indefinido" checked={values.isPromissoryNoteIndefinite} onChange={(value) => setValue("isPromissoryNoteIndefinite", value)} />
+                </div>
+              </div>
+              <div className="agreement-form-field">
+                <label htmlFor="TextArea_Observacion">Observación</label>
+                <textarea id="TextArea_Observacion" className="agreement-form-textarea" value={values.observation} onChange={(event) => setValue("observation", event.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          <div className="agreement-form-branch-region">
+            <div className="agreement-form-branch-tags" aria-label="Sucursales seleccionadas">
+              {selectedBranches.map((branch) => <span className="agreement-form-branch-tag" key={branch.id}>{branch.internalCode || legacyBranchLabel(branch)}</span>)}
+            </div>
+          </div>
+
+          <label className="agreement-form-upload">
+            <input type="file" multiple accept={LEGACY_AGREEMENT_UPLOAD.accept} onChange={addFiles} />
+            <i className="fa fa-file-o" aria-hidden="true" />
+            <span className="agreement-form-upload-primary">{LEGACY_AGREEMENT_UPLOAD.prompt}</span>
+            <span className="agreement-form-upload-secondary">{LEGACY_AGREEMENT_UPLOAD.browseText}</span>
+          </label>
+
+          <div className={`agreement-form-files${files.length ? " has-files" : ""}`}>
+            {files.map((file) => (
+              <div className="agreement-form-file" key={file.uid}>
+                <i className={`fa ${file.name.toLocaleLowerCase().endsWith(".pdf") ? "fa-file-pdf-o" : "fa-file-o"}`} aria-hidden="true" />
+                <span>{file.name}</span>
+                <i className="fa fa-check" aria-label="Archivo válido" />
+                <button type="button" className="agreement-form-file-remove" title="Eliminar" aria-label={`Eliminar ${file.name}`} onClick={() => removeFile(file)}>
+                  <i className="fa fa-trash" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="agreement-form-actions">
+            <button type="button" className="agreement-form-cancel" onClick={cancel}>Cancelar</button>
+            <button type="submit" className="agreement-form-save" disabled={saving}>
+              {saving ? <span className="agreement-form-spinner" aria-hidden="true" /> : null}
+              {agreementId ? "Guardar" : "Crear convenio"}
+            </button>
+          </div>
+        </fieldset>
+      </form>
     </div>
   );
 }

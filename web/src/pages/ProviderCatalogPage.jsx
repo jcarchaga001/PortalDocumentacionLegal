@@ -1,22 +1,45 @@
-import { DownOutlined, EditOutlined, PlusOutlined, UpOutlined } from "@ant-design/icons";
-import { Alert, Button, Checkbox, Form, Input, Modal, Select, Space, Spin, Table, message } from "antd";
-import { useState } from "react";
-import { useCatalogList, useCatalogLookups } from "../hooks/useCatalogList.js";
+import { WarningOutlined } from "@ant-design/icons";
+import { Button, Checkbox, Form, Input, Modal, Select, Space, Spin, Table, message } from "antd";
+import { useEffect, useState } from "react";
+import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
+import { runtimeConfig } from "../config/runtime.js";
+import { useCatalogList } from "../hooks/useCatalogList.js";
 import {
   createProvider,
+  getProviderBranches,
   getProviderDestinations,
   getProviders,
   updateProvider,
 } from "../services/catalogService.js";
-import { LegacyBoolean, isTrue, options } from "./CatalogUi.jsx";
+import { isTrue, options } from "./CatalogUi.jsx";
 import {
   formatProviderDestinationCurrency,
   PROVIDER_DESTINATION_COLUMN_TITLES,
   PROVIDER_DESTINATION_EMPTY_TEXT,
 } from "./providerDestinations.js";
+import {
+  formatProviderPaginationTotal,
+  isDuplicateProviderTaxNumber,
+  isLegacyProviderBooleanVisible,
+  isProviderQueryFailure,
+  providerMutationRelationship,
+  PROVIDER_CATALOG_DUPLICATE_RTN_MESSAGE,
+  PROVIDER_CATALOG_EMPTY_TEXT,
+  PROVIDER_CATALOG_PAGE_SIZE,
+  PROVIDER_CATALOG_QUERY_ERROR,
+  PROVIDER_CATALOG_SUCCESS_MESSAGE,
+} from "./providerCatalogParity.js";
 import "./ProviderCatalogPage.css";
 
 const loadProviders = (query) => getProviders(query);
+
+function LegacyProviderBoolean({ value }) {
+  return (
+    <span className="legacy-provider-boolean" aria-label={isLegacyProviderBooleanVisible(value) ? "Sí" : "No"}>
+      {isLegacyProviderBooleanVisible(value) ? <i className="fa fa-check" aria-hidden="true" /> : null}
+    </span>
+  );
+}
 
 function providerFormValues(provider) {
   if (!provider) {
@@ -27,7 +50,6 @@ function providerFormValues(provider) {
       active: false,
       withholdingOne: false,
       withholdingTwelve: false,
-      internal: false,
       destinationId: undefined,
     };
   }
@@ -38,24 +60,52 @@ function providerFormValues(provider) {
     active: isTrue(provider.active),
     withholdingOne: isTrue(provider.withholdingOne),
     withholdingTwelve: isTrue(provider.withholdingTwelve),
-    internal: isTrue(provider.internal),
-    destinationId: provider.destinationId ? Number(provider.destinationId) : undefined,
+    editInternalToggle: false,
+    destinationId: undefined,
   };
 }
 
 export function ProviderCatalogPage() {
-  const listing = useCatalogList(loadProviders, { onlyExternal: true, onlyActive: true });
-  const { lookups, error: lookupError } = useCatalogLookups();
+  const listing = useCatalogList(loadProviders, {
+    onlyExternal: true,
+    onlyActive: true,
+    pageSize: PROVIDER_CATALOG_PAGE_SIZE,
+  });
   const [form] = Form.useForm();
   const [editing, setEditing] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [providerBranches, setProviderBranches] = useState([]);
+  const [branchError, setBranchError] = useState("");
+  const [destinationError, setDestinationError] = useState("");
+  const [operationError, setOperationError] = useState("");
+  const [newInternalToggle, setNewInternalToggle] = useState(false);
+  const [, setLegacyInternalBranchEditRequested] = useState(false);
   const [expandedProviderIds, setExpandedProviderIds] = useState([]);
   const [destinationsByProvider, setDestinationsByProvider] = useState({});
 
+  useEffect(() => {
+    let active = true;
+    getProviderBranches().then((result) => {
+      if (!active) return;
+      if (result.success) {
+        setProviderBranches(result.data || []);
+        setBranchError("");
+      } else {
+        setProviderBranches([]);
+        setBranchError(result.message || PROVIDER_CATALOG_QUERY_ERROR);
+      }
+    });
+    return () => { active = false; };
+  }, []);
+
   function openModal(provider = null) {
+    setOperationError("");
     setEditing(provider);
-    form.setFieldsValue(providerFormValues(provider));
+    form.setFieldsValue({
+      ...providerFormValues(provider),
+      ...(!provider ? { newInternalToggle } : {}),
+    });
     setModalOpen(true);
   }
 
@@ -66,25 +116,34 @@ export function ProviderCatalogPage() {
   }
 
   async function saveProvider(values) {
+    setOperationError("");
     setSaving(true);
+    const relationship = providerMutationRelationship(values, Boolean(editing), editing);
     const payload = {
       ...values,
+      ...relationship,
       legalName: values.legalName || null,
-      destinationId: values.internal ? values.destinationId : null,
       active: Boolean(values.active),
       withholdingOne: Boolean(values.withholdingOne),
       withholdingTwelve: Boolean(values.withholdingTwelve),
-      internal: Boolean(values.internal),
     };
+    delete payload.newInternalToggle;
+    delete payload.editInternalToggle;
     const result = editing
       ? await updateProvider(editing.id, payload)
       : await createProvider(payload);
     if (result.success) {
-      message.success(result.message);
+      message.success(PROVIDER_CATALOG_SUCCESS_MESSAGE);
       closeModal();
       listing.reload();
     } else {
-      message.error(result.message);
+      if (isDuplicateProviderTaxNumber(result)) {
+        message.warning(PROVIDER_CATALOG_DUPLICATE_RTN_MESSAGE);
+      } else if (isProviderQueryFailure(result)) {
+        setOperationError(PROVIDER_CATALOG_QUERY_ERROR);
+      } else {
+        message.error(result.message);
+      }
       if (result.error?.field) {
         form.setFields([{ name: result.error.field, errors: [result.message] }]);
       }
@@ -107,6 +166,7 @@ export function ProviderCatalogPage() {
       [providerId]: { items: [], currencySymbol: "", error: "", loading: true, loaded: false },
     }));
     const result = await getProviderDestinations(providerId);
+    setDestinationError(result.success ? "" : (result.message || PROVIDER_CATALOG_QUERY_ERROR));
     setDestinationsByProvider((current) => ({
       ...current,
       [providerId]: result.success
@@ -138,7 +198,7 @@ export function ProviderCatalogPage() {
       return <div className="legacy-provider-destinations-loading"><Spin size="small" /></div>;
     }
     if (destinationState.error) {
-      return <Alert type="error" showIcon message={destinationState.error} />;
+      return null;
     }
     if (destinationState.items.length === 0) {
       return <div className="legacy-provider-destinations-empty">{PROVIDER_DESTINATION_EMPTY_TEXT}</div>;
@@ -177,62 +237,65 @@ export function ProviderCatalogPage() {
   }
 
   const columns = [
-    { title: "Nombre Comercial", dataIndex: "commercialName", key: "commercialName", width: 280, sorter: true },
-    { title: "Nombre Legal", dataIndex: "legalName", key: "legalName", width: 280, sorter: true },
-    { title: "Número Fiscal", dataIndex: "taxNumber", key: "taxNumber", width: 180, sorter: true },
-    { title: "Tipo", dataIndex: "internal", key: "type", width: 120, sorter: true, render: (value) => isTrue(value) ? "Interno" : "Externo" },
-    { title: "Activo", dataIndex: "active", key: "active", width: 95, align: "center", sorter: true, render: (value) => <LegacyBoolean value={value} /> },
-    { title: "Ret. 1%", dataIndex: "withholdingOne", key: "withholdingOne", width: 95, align: "center", render: (value) => <LegacyBoolean value={value} /> },
-    { title: "Ret. 12.5%", dataIndex: "withholdingTwelve", key: "withholdingTwelve", width: 115, align: "center", render: (value) => <LegacyBoolean value={value} /> },
+    { title: "Nombre Comercial", dataIndex: "commercialName", key: "commercialName", width: 235, sorter: true, sortDirections: ["ascend", "descend", "ascend"] },
+    { title: "Nombre Legal", dataIndex: "legalName", key: "legalName", width: 235, align: "center", sorter: true, sortDirections: ["ascend", "descend", "ascend"] },
+    { title: "Número Fiscal", dataIndex: "taxNumber", key: "taxNumber", width: 162, align: "center", sorter: true, sortDirections: ["ascend", "descend", "ascend"] },
+    { title: "Tipo ", dataIndex: "internal", key: "type", width: 95, render: (value) => isTrue(value) ? "Interno" : "Externo" },
+    { title: "Activo", dataIndex: "active", key: "active", width: 106, align: "center", sorter: true, sortDirections: ["ascend", "descend", "ascend"], render: (value) => <LegacyProviderBoolean value={value} /> },
+    { title: "Ret. 1%", dataIndex: "withholdingOne", key: "withholdingOne", width: 93, align: "center", render: (value) => <LegacyProviderBoolean value={value} /> },
+    { title: "Ret. 12.5%", dataIndex: "withholdingTwelve", key: "withholdingTwelve", width: 112, align: "center", render: (value) => <LegacyProviderBoolean value={value} /> },
     {
       title: "",
       key: "actions",
-      width: 175,
-      fixed: "right",
+      width: 160,
       render: (_, row) => (
         <Space size={4}>
           <Button
             type="link"
             className="legacy-catalog-row-link legacy-provider-destination-trigger"
-            icon={expandedProviderIds.includes(Number(row.id)) ? <UpOutlined /> : <DownOutlined />}
+            icon={<i className={`fa ${expandedProviderIds.includes(Number(row.id)) ? "fa-chevron-up" : "fa-chevron-down"}`} aria-hidden="true" />}
             onClick={() => toggleProviderDestinations(row)}
           >
             Destinos
           </Button>
-          <Button type="text" icon={<EditOutlined />} aria-label={`Editar ${row.commercialName}`} onClick={() => openModal(row)} />
+          <Button className="legacy-provider-edit" type="text" icon={<i className="fa fa-pencil-square-o" aria-hidden="true" />} aria-label={`Editar ${row.commercialName}`} onClick={() => openModal(row)} />
         </Space>
       ),
     },
   ];
 
   return (
-    <div className="legacy-catalog-page">
-      <div className="legacy-catalog-toolbar">
-        <Button type="link" icon={<PlusOutlined />} onClick={() => openModal()}>Nuevo Proveedor</Button>
+    <div className="legacy-catalog-page legacy-provider-catalog-page">
+      <div className="legacy-provider-page-header">
+        <h1>Catálogo de Proveedores</h1>
+        <Button type="link" onClick={() => openModal()}>+ Nuevo Proveedor</Button>
       </div>
-      <h1>Catálogo de Proveedores</h1>
       <Form
         layout="vertical"
         className="legacy-catalog-filters is-four"
         initialValues={{ onlyExternal: true, onlyActive: true }}
-        onValuesChange={(_, values) => listing.setFilters(values)}
+        onValuesChange={(_, values) => listing.setFilters(values, { resetPage: false })}
       >
-        <Form.Item label="Nombre" name="name"><Input allowClear /></Form.Item>
-        <Form.Item label="Número Fiscal" name="taxNumber"><Input allowClear /></Form.Item>
+        <Form.Item label="Nombre" name="name"><Input prefix={<i className="fa fa-search" aria-hidden="true" />} maxLength={50} /></Form.Item>
+        <Form.Item label="Número Fiscal" name="taxNumber"><Input prefix={<i className="fa fa-search" aria-hidden="true" />} maxLength={50} /></Form.Item>
         <Form.Item className="legacy-catalog-check" name="onlyExternal" valuePropName="checked"><Checkbox>Solo Externos</Checkbox></Form.Item>
         <Form.Item className="legacy-catalog-check" name="onlyActive" valuePropName="checked"><Checkbox>Solo Activas</Checkbox></Form.Item>
       </Form>
-      {(listing.error || lookupError) && <Alert type="error" showIcon message={listing.error || lookupError} />}
+      {(listing.error || branchError || destinationError || operationError) && (
+        <LegacyErrorFeedback message={PROVIDER_CATALOG_QUERY_ERROR} />
+      )}
       <Table
         className="legacy-history-table legacy-catalog-table"
         rowKey="id"
         columns={columns}
         dataSource={listing.rows}
         loading={listing.loading}
-        locale={{ emptyText: "No hay registros..." }}
-        pagination={listing.pagination}
+        locale={{ emptyText: PROVIDER_CATALOG_EMPTY_TEXT }}
+        pagination={{
+          ...listing.pagination,
+          showTotal: formatProviderPaginationTotal,
+        }}
         onChange={listing.changeTable}
-        scroll={{ x: 1450 }}
         expandable={{
           expandedRowKeys: expandedProviderIds,
           expandedRowRender: renderProviderDestinations,
@@ -241,39 +304,93 @@ export function ProviderCatalogPage() {
       />
 
       <Modal
-        title={editing ? "Editar Proveedor" : "Nuevo Proveedor"}
+        className="legacy-provider-editor-modal"
+        title={(
+          <div className="legacy-provider-modal-title">
+            <img src={`${runtimeConfig.basePath}/brand/branch-detail/logoFarmaciaAhorro.jpg`} alt="Farmacias del Ahorro" />
+            <span>{editing ? "Modificar Proveedor" : "Nuevo Proveedor"}</span>
+          </div>
+        )}
         open={modalOpen}
         onCancel={closeModal}
         footer={null}
         destroyOnHidden
-        width={620}
+        centered
+        closable={false}
+        maskClosable={false}
+        width={500}
       >
-        <Form form={form} layout="vertical" className="legacy-catalog-modal-form" onFinish={saveProvider}>
-          <Form.Item label="Nombre de Proveedor" name="commercialName" rules={[{ required: true, message: "Complete el nombre del proveedor." }]}>
+        <Form
+          form={form}
+          layout="vertical"
+          className="legacy-catalog-modal-form legacy-provider-modal-form"
+          onValuesChange={(changed) => {
+            if (!editing && Object.hasOwn(changed, "newInternalToggle")) {
+              setNewInternalToggle(Boolean(changed.newInternalToggle));
+            }
+          }}
+          onFinish={saveProvider}
+        >
+          <Form.Item label="Nombre de Proveedor" name="commercialName">
             <Input maxLength={512} />
           </Form.Item>
           <Form.Item label="Nombre Legal" name="legalName"><Input maxLength={512} /></Form.Item>
-          <Form.Item label="Número Fiscal" name="taxNumber" rules={[{ required: true, message: "Complete el número fiscal." }]}>
+          <Form.Item label="Número Fiscal" name="taxNumber" rules={[{ required: true, message: "Campo Obligatorio" }]}>
             <Input maxLength={64} />
           </Form.Item>
-          <div className="legacy-catalog-checkbox-grid">
-            <Form.Item name="active" valuePropName="checked"><Checkbox>Activo</Checkbox></Form.Item>
-            <Form.Item name="withholdingOne" valuePropName="checked"><Checkbox>Retencion 1%</Checkbox></Form.Item>
-            <Form.Item name="withholdingTwelve" valuePropName="checked"><Checkbox>Retencion 12.5%</Checkbox></Form.Item>
-            <Form.Item name="internal" valuePropName="checked"><Checkbox>Proveedor Interno</Checkbox></Form.Item>
-          </div>
-          <Form.Item noStyle shouldUpdate={(before, after) => before.internal !== after.internal}>
-            {({ getFieldValue }) => getFieldValue("internal") ? (
-              <Form.Item label="Destino" name="destinationId">
-                <Select allowClear showSearch optionFilterProp="label" placeholder="Seleccione Destino" options={options(lookups.branches)} />
+          <div className="legacy-catalog-checkbox-grid legacy-provider-checkbox-grid">
+            <Form.Item label="Activo" name="active" valuePropName="checked"><Checkbox aria-label="Activo" /></Form.Item>
+            <Form.Item label="Retencion 1%" name="withholdingOne" valuePropName="checked"><Checkbox aria-label="Retencion 1%" /></Form.Item>
+            <Form.Item label="Retencion 12.5%" name="withholdingTwelve" valuePropName="checked"><Checkbox aria-label="Retencion 12.5%" /></Form.Item>
+            <Form.Item label="Proveedor Interno" name={editing ? "editInternalToggle" : "newInternalToggle"} valuePropName="checked"><Checkbox aria-label="Proveedor Interno" /></Form.Item>
+            {editing && (
+              <Form.Item noStyle shouldUpdate={(before, after) => before.editInternalToggle !== after.editInternalToggle}>
+                {({ getFieldValue }) => (
+                  <div className="legacy-provider-branch-field">
+                    <div className="legacy-provider-branch-label">Seleccione Sucursal</div>
+                    {getFieldValue("editInternalToggle") ? (
+                      <Form.Item name="destinationId">
+                        <Select allowClear showSearch optionFilterProp="label" placeholder="Seleccionar..." options={options(providerBranches)} />
+                      </Form.Item>
+                    ) : null}
+                    {isTrue(editing.internal) ? (
+                      <div className="legacy-provider-existing-branch">
+                        <Input defaultValue={editing.destinationName || ""} aria-label="Sucursal interna actual" />
+                        <Button
+                          type="link"
+                          className="legacy-provider-existing-branch-edit"
+                          icon={<i className="fa fa-pencil-square-o" aria-hidden="true" />}
+                          aria-label="Editar sucursal interna"
+                          onClick={() => setLegacyInternalBranchEditRequested(true)}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </Form.Item>
-            ) : null}
-          </Form.Item>
+            )}
+          </div>
           <div className="legacy-catalog-modal-actions">
-            <Button onClick={closeModal}>Cancelar</Button>
-            <Button type="primary" htmlType="submit" loading={saving}>Guardar</Button>
+            <Button className="legacy-provider-cancel" onClick={closeModal}>Cancelar</Button>
+            <Button type="primary" htmlType="submit">Guardar</Button>
           </div>
         </Form>
+      </Modal>
+
+      <Modal
+        className="legacy-provider-loading-modal"
+        open={saving}
+        closable={false}
+        maskClosable={false}
+        footer={null}
+        centered
+        width={500}
+        title={<span><WarningOutlined /> Favor Espere...</span>}
+      >
+        <div className="legacy-provider-loading-content">
+          <Spin size="large" />
+          <span>Generando Solicitud...</span>
+        </div>
       </Modal>
     </div>
   );

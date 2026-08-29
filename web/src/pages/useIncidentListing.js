@@ -16,6 +16,7 @@ export function useIncidentListing({
   initialFilters,
   initialPageSize = 20,
   loadData,
+  resetPageOnFilters = true,
 }) {
   const [catalogs, setCatalogs] = useState(emptyCatalogs);
   const [filters, setFilters] = useState(initialFilters);
@@ -29,6 +30,8 @@ export function useIncidentListing({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [errorCode, setErrorCode] = useState("");
+  const [catalogError, setCatalogError] = useState("");
+  const [catalogErrorCode, setCatalogErrorCode] = useState("");
   const requestSequence = useRef(0);
 
   const loadPage = useCallback(async (page, pageSize, query) => {
@@ -48,9 +51,9 @@ export function useIncidentListing({
       setError("");
       setErrorCode("");
     } else {
-      setRows([]);
-      setMetrics({});
-      setPagination((current) => ({ ...current, current: page, total: 0 }));
+      // El runtime conserva resultados anteriores cuando una consulta
+      // dependiente falla; el feedback se muestra sin destruir la tabla.
+      setPagination((current) => ({ ...current, current: page }));
       setError(result.message || "No fue posible consultar la información.");
       setErrorCode(result.error?.code || "");
     }
@@ -60,7 +63,16 @@ export function useIncidentListing({
   useEffect(() => {
     let active = true;
     getIncidentCatalogs(catalogScope).then((result) => {
-      if (active && result.success) setCatalogs({ ...emptyCatalogs, ...(result.data || {}) });
+      if (!active) return;
+      if (result.success) {
+        setCatalogs({ ...emptyCatalogs, ...(result.data || {}) });
+        setCatalogError("");
+        setCatalogErrorCode("");
+      } else {
+        setCatalogs(emptyCatalogs);
+        setCatalogError(result.message || "No fue posible consultar la información.");
+        setCatalogErrorCode(result.error?.code || "");
+      }
     });
     return () => {
       active = false;
@@ -68,12 +80,15 @@ export function useIncidentListing({
   }, [catalogScope]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => loadPage(1, pagination.pageSize, filters), 180);
+    const targetPage = resetPageOnFilters ? 1 : pagination.current;
+    const timer = window.setTimeout(() => loadPage(targetPage, pagination.pageSize, filters), 180);
     return () => window.clearTimeout(timer);
-  }, [filters, loadPage, pagination.pageSize]);
+  }, [filters, loadPage, pagination.pageSize, resetPageOnFilters]);
 
   return {
     catalogs,
+    catalogError,
+    catalogErrorCode,
     error,
     errorCode,
     filters,

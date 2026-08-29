@@ -17,18 +17,35 @@ export function legacyBookList(books) {
 }
 
 export function currentBookEvidences(book) {
-  return (book?.evidences || []).filter((evidence) => !evidence.isHistoric);
+  // GetTblRegistroLibros does not filter isHistoric. The screen consumes its
+  // first row after the legacy fechaRegistro DESC order, including historical rows.
+  return Array.isArray(book?.evidences) ? book.evidences : [];
+}
+
+export function mergeLegacyBookCatalog(detail, refreshedBooks) {
+  if (!detail) return detail;
+  const currentByAssignment = new Map(
+    (detail.books || []).map((book) => [Number(book.assignmentId), book]),
+  );
+  return {
+    ...detail,
+    books: (refreshedBooks || []).map((book) => ({
+      ...book,
+      evidences: currentByAssignment.get(Number(book.assignmentId))?.evidences || [],
+    })),
+  };
 }
 
 export function documentIndicator(entry) {
   const statusId = Number(entry?.document?.statusId);
   if (statusId === 2) return "registered";
   if (statusId === 4) return "pending";
+  if (statusId === 5) return "expired";
   return null;
 }
 
 export function bookIndicator(book) {
-  return currentBookEvidences(book).length > 0 ? "registered" : "pending";
+  return currentBookEvidences(book).length > 0 ? "registered" : null;
 }
 
 export function canDeleteBranchDocument(positionCode) {

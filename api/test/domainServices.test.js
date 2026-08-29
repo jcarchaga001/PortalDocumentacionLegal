@@ -82,6 +82,17 @@ test("filtros documentales limitan pagina, texto e identificadores", () => {
   assert.equal(filters.sortDirection, "desc");
 });
 
+test("normaliza la superficie administrativa sin habilitar documentos inactivos", () => {
+  const filters = normalizeFilters({
+    surface: "administrative-history",
+    documentType: "administrative",
+    includeInactive: "true",
+  });
+  assert.equal(filters.surface, "administrative-history");
+  assert.equal(filters.documentType, "administrative");
+  assert.equal(filters.includeInactive, false);
+});
+
 test("historico usa la tabla fisica de estados y limites enteros literales", async () => {
   const calls = [];
   const repository = createDocumentRepository({

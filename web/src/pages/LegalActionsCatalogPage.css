@@ -1,0 +1,330 @@
+.legacy-legal-actions-page {
+  width: 100%;
+  color: #272b30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-legal-actions-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  margin: 0 0 32px;
+}
+
+.legacy-legal-actions-heading h1 {
+  margin: 0;
+  color: #272b30;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+}
+
+.legacy-legal-actions-new {
+  display: block;
+  color: #227f28;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+  text-align: right;
+  text-decoration: none;
+}
+
+.legacy-legal-actions-new:hover,
+.legacy-legal-actions-new:focus {
+  color: #227f28;
+  text-decoration: none;
+}
+
+.legacy-legal-actions-table {
+  width: 100%;
+  color: #272b30;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-legal-actions-table .ant-spin-nested-loading,
+.legacy-legal-actions-table .ant-spin-container,
+.legacy-legal-actions-table .ant-table,
+.legacy-legal-actions-table .ant-table-container,
+.legacy-legal-actions-table .ant-table-content,
+.legacy-legal-actions-table table {
+  width: 100%;
+}
+
+.legacy-legal-actions-table .ant-table {
+  border-radius: 4px;
+  color: #272b30;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-legal-actions-table .ant-table-container {
+  overflow: hidden;
+  border: 0.8px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.legacy-legal-actions-table .ant-table-thead > tr > th {
+  height: 48px;
+  padding: 0 24px !important;
+  border-bottom: 0.8px solid #dee2e6;
+  background: #222 !important;
+  color: #fff !important;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 21px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.legacy-legal-actions-table .ant-table-thead > tr > th::before {
+  display: none !important;
+}
+
+.legacy-legal-actions-table .ant-table-column-sorters {
+  justify-content: center;
+  gap: 6px;
+}
+
+.legacy-legal-actions-table .ant-table-column-sorter {
+  color: #4f575e;
+  font-size: 11px;
+}
+
+.legacy-legal-actions-table .ant-table-column-sorter-up.active,
+.legacy-legal-actions-table .ant-table-column-sorter-down.active {
+  color: #fff;
+}
+
+.legacy-legal-actions-table .ant-table-tbody > tr > td {
+  height: 56px;
+  padding: 8px 24px !important;
+  border-bottom: 0.8px solid #dee2e6;
+  background: #fff;
+  color: #272b30;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.legacy-legal-actions-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: 0;
+}
+
+.legacy-legal-actions-table .ant-table-tbody > tr:hover > td {
+  background: #f1f3f5 !important;
+}
+
+.legacy-legal-actions-table .ant-table-placeholder > td {
+  height: 56px;
+  background: #fff !important;
+}
+
+.legacy-legal-actions-table .ant-empty-image {
+  display: none;
+}
+
+.legacy-legal-actions-table .ant-empty-description {
+  margin: 0;
+  color: #272b30;
+}
+
+.legacy-legal-actions-table .icon {
+  display: inline-block;
+  font-family: FontAwesome;
+  font-size: 28px;
+  font-style: normal;
+  line-height: 28px;
+}
+
+.legacy-legal-actions-table .icon.is-active {
+  width: 28px;
+  color: #3b921e;
+}
+
+.legacy-legal-actions-table .icon.is-inactive {
+  width: 24px;
+  color: #bf2424;
+}
+
+.legacy-legal-actions-edit {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  color: #4d5c66;
+  line-height: 28px;
+  text-decoration: none;
+}
+
+.legacy-legal-actions-edit:hover,
+.legacy-legal-actions-edit:focus {
+  color: #4d5c66;
+  text-decoration: none;
+}
+
+.legacy-legal-actions-table .ant-table-pagination.ant-pagination {
+  display: flex;
+  width: 100%;
+  min-height: 21px;
+  margin: 24px 0 0;
+  color: #272b30;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-legal-actions-table .ant-pagination-total-text {
+  margin-right: auto;
+  line-height: 21px;
+}
+
+.legacy-legal-actions-modal .ant-modal {
+  padding: 0;
+}
+
+.legacy-legal-actions-modal .ant-modal-content {
+  padding: 24px;
+  border-radius: 4px;
+  box-shadow: 0 8px 10px rgb(0 0 0 / 10%);
+  color: #272b30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-legal-actions-modal .ant-modal-body {
+  padding: 0;
+}
+
+.legacy-legal-actions-section {
+  padding-top: 20px;
+}
+
+.legacy-legal-actions-section-title {
+  box-sizing: border-box;
+  height: 44.8px;
+  padding: 0 0 8px;
+  border-bottom: 0.8px solid #dee2e6;
+  color: #272b30;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 36px;
+  text-align: center;
+}
+
+.legacy-legal-actions-section-content {
+  padding-top: 8px;
+}
+
+.legacy-legal-actions-form {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 24px;
+  border: 0.8px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.legacy-legal-actions-field {
+  height: 93px;
+}
+
+.legacy-legal-actions-field.is-checkbox {
+  height: 58px;
+}
+
+.legacy-legal-actions-field label {
+  display: block;
+  height: 21px;
+  margin: 0 0 8px;
+  color: #4f575e;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+}
+
+.legacy-legal-actions-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 40px;
+  margin: 0 0 24px;
+  padding: 0 16px;
+  border: 0.8px solid #4d5c66;
+  border-radius: 4px;
+  outline: none;
+  background: #fff;
+  color: #272b30;
+  font: 14px/17.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.legacy-legal-actions-input:focus {
+  border-color: #4d5c66;
+  box-shadow: none;
+}
+
+.legacy-legal-actions-field.is-checkbox .ant-checkbox-wrapper {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.legacy-legal-actions-field.is-checkbox .ant-checkbox {
+  top: 0;
+  width: 24px;
+  height: 24px;
+}
+
+.legacy-legal-actions-field.is-checkbox .ant-checkbox-inner {
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
+}
+
+.legacy-legal-actions-field.is-checkbox .ant-checkbox-inner::after {
+  width: 7px;
+  height: 12px;
+}
+
+.legacy-legal-actions-field.is-checkbox .ant-checkbox-checked .ant-checkbox-inner {
+  border-color: #227f28;
+  background: #227f28;
+}
+
+.legacy-legal-actions-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7.8875px;
+  height: 40px;
+  margin-top: 20px;
+}
+
+.legacy-legal-actions-modal-actions button {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 4px;
+  box-shadow: none;
+  font: 600 14px/14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  cursor: pointer;
+}
+
+.legacy-legal-actions-save {
+  border: 0.8px solid #29823b;
+  background: #29823b;
+  color: #fff;
+}
+
+.legacy-legal-actions-back {
+  border: 0 solid #fff;
+  background: #870707;
+  color: #fff;
+}

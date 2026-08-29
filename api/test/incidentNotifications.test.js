@@ -12,6 +12,7 @@ function incidentResult(overrides = {}) {
     branchName: "HN01 - Sucursal Centro",
     agencyId: 4,
     agencyName: "ARSA",
+    typeId: 2,
     visitDate: "2099-08-06 11:23:00",
     openingDate: "2099-08-06 11:23:00",
     registeredById: 460,
@@ -30,6 +31,38 @@ function incidentResult(overrides = {}) {
     ...overrides,
   };
 }
+
+test("crear incidente no regulatorio conserva la rama OML sin correo", async () => {
+  const events = [];
+  const service = createIncidentService({
+    async createIncident() {
+      events.push({ source: "repository" });
+      return incidentResult({ typeId: 1, agencyName: "Area Interna" });
+    },
+  }, {
+    notificationService: notificationService(events),
+    clock: FIXED_CLOCK,
+  });
+
+  const result = await service.createIncident("internal", 4, 460, {
+    branchId: 312,
+    agencyId: 4,
+    visitorId: 99,
+    visitAt: "2099-08-06T11:23",
+    comment: "Visita interna",
+    s3Key: "incidents/evidencia.pdf",
+    fileName: "evidencia.pdf",
+  });
+
+  assert.deepEqual(events, [{ source: "repository" }]);
+  assert.deepEqual(result.notification, {
+    success: true,
+    attempted: false,
+    sent: false,
+    skipped: true,
+    reason: "OML_NOTIFICATION_ONLY_FOR_REGULATORY_INCIDENT",
+  });
+});
 
 function laborResult(overrides = {}) {
   return {

@@ -30,4 +30,7 @@ test("la ruta OLD no hereda fuentes ni funciones exclusivas de la pantalla vigen
   assert.equal(legacy.showResponsibleEditor, false);
   assert.equal(legacy.showCaseThread, false);
   assert.equal(legacy.allowPendingInformation, false);
+  assert.equal(legacy.actionHistoryMode, "inline");
+  assert.equal(legacy.evidenceMode, "icon");
+  assert.equal(legacy.emptyAttachmentsText, "No hay Evidencias Adjuntadas");
 });

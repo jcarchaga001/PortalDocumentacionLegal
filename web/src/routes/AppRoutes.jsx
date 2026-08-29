@@ -20,6 +20,7 @@ import { IncidentDetailPage } from "../pages/IncidentDetailPage.jsx";
 import { LaborCasesPage } from "../pages/LaborCasesPage.jsx";
 import { LaborActionsPage } from "../pages/LaborActionsPage.jsx";
 import { LaborCaseDetailPage } from "../pages/LaborCaseDetailPage.jsx";
+import { LegacyLaborCaseDetailPage } from "../pages/LegacyLaborCaseDetailPage.jsx";
 import { UserPermissionsPage } from "../pages/UserPermissionsPage.jsx";
 import { ProviderCatalogPage } from "../pages/ProviderCatalogPage.jsx";
 import { DocumentCategoriesPage } from "../pages/DocumentCategoriesPage.jsx";
@@ -81,7 +82,7 @@ export function AppRoutes() {
             <Route path={ROUTES.laborCases} exact component={LaborCasesPage} />
             <Route path={ROUTES.myLaborActions} exact component={LaborActionsPage} />
             <Route path={ROUTES.laborCaseDetail} exact component={LaborCaseDetailPage} />
-            <Route path={ROUTES.laborCaseDetailLegacy} exact render={() => <LaborCaseDetailPage legacy />} />
+            <Route path={ROUTES.laborCaseDetailLegacy} exact component={LegacyLaborCaseDetailPage} />
             <ProtectedRoute path={ROUTES.users} exact allowedPositions={[7, 15]}>
               <UserPermissionsPage />
             </ProtectedRoute>

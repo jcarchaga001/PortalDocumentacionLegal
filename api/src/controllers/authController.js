@@ -42,7 +42,7 @@ export function createAuthController({ authService, sessionService, passwordReco
     async requestPasswordRecovery(req, res, next) {
       try {
         const data = await requireRecoveryService(passwordRecoveryService).request(req.body);
-        res.json(normalizedSuccess("Se han enviado sus datos de ingreso al correo indicado.", data));
+        res.json(normalizedSuccess("Se ha enviado sus datos de ingreso al correo ingresado", data));
       } catch (error) {
         next(error);
       }

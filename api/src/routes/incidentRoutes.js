@@ -17,6 +17,7 @@ export function createIncidentRouter(incidentService) {
   router.get("/labor/cases/:caseId", controller.laborCase);
   router.get("/:scope/actions", controller.actions);
   router.patch("/:scope/actions/:actionId", controller.updateIncidentAction);
+  router.get("/:scope/:incidentId/actions/:actionId", controller.incidentAction);
   router.post("/:scope/:incidentId/actions", controller.createIncidentAction);
   router.post("/:scope/:incidentId/comments", controller.addIncidentComment);
   router.post("/:scope/:incidentId/close", requireIncidentClose, controller.closeIncident);

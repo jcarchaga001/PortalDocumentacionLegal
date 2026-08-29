@@ -1,0 +1,235 @@
+.agreements-page {
+  box-sizing: border-box;
+  width: calc(100% - .475px);
+  margin-left: -7.3625px;
+  padding: 40px;
+  overflow: visible;
+  color: #272b30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.agreements-page__toolbar {
+  display: flex;
+  height: 29px;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0 0 16px;
+}
+
+.agreements-page__export,
+.agreements-page__new,
+.agreements-page__detail,
+.agreements-page__date-clear {
+  border: 0;
+  color: #4d5c66;
+  background: transparent;
+  cursor: pointer;
+}
+
+.agreements-page__export {
+  display: inline-flex;
+  width: 34px;
+  height: 29px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  color: #08a93e;
+  font-size: 28px;
+  line-height: 28px;
+}
+
+.agreements-page__heading-row {
+  display: flex;
+  height: 72px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.agreements-page h1 {
+  height: 40px;
+  margin: 0;
+  color: #272b30;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+}
+
+.agreements-page__new {
+  display: inline-flex;
+  height: 21px;
+  margin-top: 9.5px;
+  padding: 0;
+  align-items: center;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.agreements-page__new .fa { margin-right: 8px; }
+
+.agreements-page__filters {
+  display: grid;
+  grid-template-columns: 362.5px 362.6px 177.7px;
+  column-gap: 16px;
+  height: 61px;
+  margin: 0 0 70px;
+}
+
+.agreements-page__field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.agreements-page__field > label {
+  height: 21px;
+  color: #4f575e;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.agreements-page__client .ant-select { width: 100%; height: 40px; }
+.agreements-page__client .ant-select-selector {
+  height: 40px !important;
+  padding: 0 12px !important;
+  border: 1px solid #c9d0d5 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+.agreements-page__client .ant-select-selection-wrap,
+.agreements-page__client .ant-select-selection-item,
+.agreements-page__client .ant-select-selection-placeholder {
+  line-height: 38px !important;
+}
+
+.agreements-page__date-control {
+  display: grid;
+  grid-template-columns: 300.9px 61.7px;
+  height: 40px;
+}
+.agreements-page__date-control .legacy-date-range-picker,
+.agreements-page__date-control .legacy-date-range-picker__input { width: 100%; height: 40px; }
+.agreements-page__date-control .legacy-date-range-picker__input {
+  padding: 8px 12px;
+  border: 1px solid #c9d0d5;
+  border-radius: 4px;
+  color: #272b30;
+  background: #fff;
+  font-size: 14px;
+  line-height: 21px;
+}
+.agreements-page__date-clear {
+  display: inline-flex;
+  height: 40px;
+  padding: 5px;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  line-height: 28px;
+}
+
+.agreements-page__indefinite { align-items: center; }
+.agreements-page__indefinite > label { width: 100%; text-align: center; }
+.agreements-page__indefinite .ant-checkbox-wrapper { height: 40px; padding-top: 0; }
+.agreements-page__indefinite .ant-checkbox { top: 0; }
+.agreements-page__indefinite .ant-checkbox-inner { width: 24px; height: 24px; border-radius: 2px; }
+.agreements-page__indefinite .ant-checkbox-checked .ant-checkbox-inner::after {
+  width: 7px;
+  height: 13px;
+}
+
+.agreements-page__table-region {
+  position: relative;
+  width: 1454.325px;
+  margin-left: -40px;
+}
+
+.agreements-page__table {
+  width: 1454.325px;
+  table-layout: fixed;
+  border: .8px solid #dee2e6;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 4px;
+  color: #272b30;
+  background: #fff;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.agreements-page__table th {
+  height: 63.8px;
+  padding: 0 24px;
+  border: 0;
+  color: #f3f6f8;
+  background: #444;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 21px;
+  text-align: center;
+  white-space: pre-line;
+}
+.agreements-page__table th:first-child { border-top-left-radius: 3px; }
+.agreements-page__table th:last-child { border-top-right-radius: 3px; }
+
+.agreements-page__table td {
+  min-height: 58.8px;
+  padding: 8px 24px;
+  border: 0;
+  border-top: .8px solid #dee2e6;
+  vertical-align: middle;
+  overflow-wrap: break-word;
+}
+.agreements-page__table tbody tr:first-child td { border-top: 0; }
+.agreements-page__table tbody tr.is-expired td { background: #f7cdcd; }
+.agreements-page__table tbody tr.is-expiring td { background: #fbd999; }
+.agreements-page__table td:nth-last-child(-n+2) { text-align: center; }
+
+.agreements-page__detail {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 28px;
+  line-height: 28px;
+}
+.agreements-page__status-icon { color: #08a93e; font-size: 18px; }
+.agreements-page__warning-icon { margin-left: 7px; color: #e9a100; }
+
+.agreements-page__loading {
+  position: absolute;
+  z-index: 2;
+  inset: 63.8px 0 0;
+  display: grid;
+  min-height: 58.8px;
+  place-items: center;
+  color: #4d5c66;
+  background: rgba(255, 255, 255, .72);
+}
+
+.agreements-page__pagination {
+  display: flex;
+  width: 1199.525px;
+  height: 32px;
+  margin-top: 24px;
+  align-items: center;
+  justify-content: space-between;
+}
+.agreements-page__pagination-summary { font-size: 14px; line-height: 21px; }
+.agreements-page__pagination-pages { display: flex; gap: 8px; }
+.agreements-page__pagination button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  color: #4d5c66;
+  background: #fff;
+  cursor: pointer;
+}
+.agreements-page__pagination button.is-active { color: #fff; background: #4d5c66; }
+.agreements-page__pagination button:disabled { cursor: default; opacity: .45; }
+
+@media (max-width: 900px) {
+  .agreements-page { width: 100%; margin-left: 0; padding: 24px 15px; overflow-x: auto; }
+  .agreements-page__filters { grid-template-columns: minmax(280px, 1fr); height: auto; row-gap: 16px; }
+  .agreements-page__table-region { margin-left: 0; }
+}

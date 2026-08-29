@@ -7,6 +7,7 @@ import {
   legacyAgreementStoredExtension,
   validateLegacyAgreementCandidate,
   validateLegacyDocumentFileName,
+  validateLegacyIncidentCommentFileName,
   validateLegacyIncidentFileName,
 } from "../src/config/legacyFileContracts.js";
 
@@ -40,6 +41,20 @@ test("evidencias conservan extensiones y variantes tipograficas exactas del lega
   );
 });
 
+test("adjuntos de comentarios aceptan solo imagenes y conservan ambas variantes legacy", () => {
+  for (const extension of ["png", "jpeg", "jpg", "PNG"]) {
+    assert.equal(validateLegacyIncidentCommentFileName(`comentario.${extension}`).valid, true);
+  }
+  assert.deepEqual(validateLegacyIncidentCommentFileName("comentario.pdf"), {
+    valid: false,
+    message: "La extención del Archivo no es Valido. (Solo permite .PNG o .JPEG)",
+  });
+  assert.deepEqual(validateLegacyIncidentCommentFileName("comentario.pdf", { legal: true }), {
+    valid: false,
+    message: "La extensión del archivo no es válido. (Solo permite .PNG o .JPEG)",
+  });
+});
+
 test("convenios conservan Accept, cantidad, tamano y extension con punto del bloque legacy", () => {
   assert.equal(
     LEGACY_AGREEMENT_UPLOAD.accept,
@@ -53,4 +68,3 @@ test("convenios conservan Accept, cantidad, tamano y extension con punto del blo
   assert.equal(validateLegacyAgreementCandidate({ name: "contrato.pdf", size: 100_000_001 }).code, "MAX_FILE_SIZE");
   assert.equal(validateLegacyAgreementCandidate({ name: "contrato.pdf", size: 1 }, 500).code, "MAX_FILES");
 });
-

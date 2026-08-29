@@ -1,0 +1,315 @@
+.legacy-user-permissions-page {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  color: #272b30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+}
+
+.legacy-user-permissions-page h1 {
+  height: 40px;
+  margin: 0 0 32px;
+  color: #272b30;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+}
+
+.legacy-user-permissions-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  align-items: end;
+  margin: 0 0 20px;
+}
+
+.legacy-user-permissions-filter {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.legacy-user-permissions-filter > label {
+  height: 21px;
+  margin: 0;
+  color: #4f575e;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+}
+
+.legacy-user-permissions-filter .ant-select,
+.legacy-user-permissions-filter .ant-input,
+.legacy-user-permissions-filter .ant-input-affix-wrapper {
+  width: 100%;
+  height: 40px;
+}
+
+.legacy-user-permissions-filter .ant-select-selector,
+.legacy-user-permissions-filter .ant-input,
+.legacy-user-permissions-filter .ant-input-affix-wrapper {
+  min-height: 40px !important;
+  border-color: #ced4da !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+.legacy-user-permissions-filter .ant-select-selection-placeholder,
+.legacy-user-permissions-filter .ant-select-selection-item,
+.legacy-user-permissions-filter .ant-input {
+  color: #4f575e;
+  font-size: 14px;
+  line-height: 38px;
+}
+
+.legacy-user-permissions-filter .ant-select-selection-placeholder {
+  color: #737b82;
+}
+
+.legacy-user-permissions-filter.is-checkbox {
+  justify-content: flex-end;
+  height: 61px;
+}
+
+.legacy-user-permissions-filter.is-checkbox .ant-checkbox-wrapper {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  color: #4f575e;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-user-permissions-filter.is-checkbox .ant-checkbox-inner {
+  border-color: #ced4da;
+  border-radius: 0;
+}
+
+.legacy-user-permissions-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.legacy-user-permissions-table {
+  width: 100%;
+  min-width: 1198px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.legacy-user-permissions-table thead th {
+  box-sizing: border-box;
+  height: 48px;
+  padding: 0 24px;
+  border: 0;
+  background: #222;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 21px;
+  white-space: nowrap;
+}
+
+.legacy-user-permissions-table thead th.is-center,
+.legacy-user-permissions-table tbody td.is-center {
+  text-align: center;
+}
+
+.legacy-user-permissions-table thead th.is-left,
+.legacy-user-permissions-table tbody td.is-left {
+  text-align: left;
+}
+
+.legacy-user-permissions-header-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.legacy-user-permissions-table thead th.is-left .legacy-user-permissions-header-content {
+  justify-content: flex-start;
+}
+
+.legacy-user-permissions-sorter {
+  position: relative;
+  display: inline-block;
+  width: 10px;
+  height: 11px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.legacy-user-permissions-sorter::before,
+.legacy-user-permissions-sorter::after {
+  position: absolute;
+  left: 1px;
+  width: 0;
+  height: 0;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  content: "";
+}
+
+.legacy-user-permissions-sorter::before {
+  top: 0;
+  border-bottom: 4px solid #4f575e;
+}
+
+.legacy-user-permissions-sorter::after {
+  bottom: 0;
+  border-top: 4px solid #4f575e;
+}
+
+.legacy-user-permissions-table tbody td {
+  box-sizing: border-box;
+  height: 56px;
+  padding: 8px 24px;
+  overflow: hidden;
+  border-bottom: 1px solid #dee2e6;
+  background: #fff;
+  color: #272b30;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legacy-user-permissions-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.legacy-user-permissions-table tbody td.legacy-user-permissions-empty-cell,
+.legacy-user-permissions-table tbody td.legacy-user-permissions-loading-cell {
+  height: 56px;
+  background: #fff;
+  color: #4f575e;
+  font-size: 14px;
+  text-align: center;
+}
+
+.legacy-user-permissions-loading-cell .fa {
+  margin-right: 8px;
+}
+
+.legacy-user-permissions-access {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.legacy-user-permissions-access .fa {
+  font-size: 20px;
+  line-height: 22px;
+}
+
+.legacy-user-permissions-access:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
+.legacy-user-permissions-access:not(:disabled)::before,
+.legacy-user-permissions-access:not(:disabled)::after {
+  position: absolute;
+  z-index: 30;
+  display: none;
+  pointer-events: none;
+}
+
+.legacy-user-permissions-access:not(:disabled)::before {
+  top: 50%;
+  left: calc(100% + 8px);
+  min-width: max-content;
+  padding: 8px;
+  transform: translateY(-50%);
+  background: #272b30;
+  color: #fff;
+  content: attr(data-tooltip);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+}
+
+.legacy-user-permissions-access:not(:disabled)::after {
+  top: 50%;
+  left: calc(100% + 3px);
+  width: 0;
+  height: 0;
+  transform: translateY(-50%);
+  border-top: 5px solid transparent;
+  border-right: 5px solid #272b30;
+  border-bottom: 5px solid transparent;
+  content: "";
+}
+
+.legacy-user-permissions-access:not(:disabled):hover::before,
+.legacy-user-permissions-access:not(:disabled):hover::after,
+.legacy-user-permissions-access:not(:disabled):focus-visible::before,
+.legacy-user-permissions-access:not(:disabled):focus-visible::after {
+  display: block;
+}
+
+.legacy-user-permissions-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  margin-top: 16px;
+  color: #4f575e;
+  font-size: 14px;
+}
+
+.legacy-user-permissions-pagination-controls {
+  display: inline-flex;
+  align-items: center;
+}
+
+.legacy-user-permissions-page-button {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid #dee2e6;
+  border-left: 0;
+  background: #fff;
+  color: #4f575e;
+  font: inherit;
+  cursor: pointer;
+}
+
+.legacy-user-permissions-page-button:first-child {
+  border-left: 1px solid #dee2e6;
+  border-radius: 4px 0 0 4px;
+}
+
+.legacy-user-permissions-page-button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.legacy-user-permissions-page-button.is-current {
+  background: #4d5c66;
+  color: #fff;
+}
+
+.legacy-user-permissions-page-button:disabled {
+  background: #f3f6f8;
+  color: #a7adb2;
+  cursor: default;
+}
+
+@media (max-width: 900px) {
+  .legacy-user-permissions-filters {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}

@@ -12,6 +12,8 @@ const SORT_COLUMNS = Object.freeze({
   branchName: "s.Nombre_Sucursal",
   reference: "d.referenciaDocumento",
   description: "d.numeroContrato",
+  providerCode: "d.codigoProveedor",
+  providerId: "d.codigoProveedor",
   providerName: "p.Nombre_comercial",
   categoryName: "c.nombreCategoria",
   subcategoryName: "sc.NombreSubcategoria",
@@ -108,6 +110,25 @@ export function createDocumentRepository(pool) {
     LEFT JOIN ${databases.documents}.tblArchivosDocumentos a ON a.codigoArchivo = d.codigoArchivo
   `;
 
+  const expiringFromClause = `
+    FROM ${databases.documents}.tblDocumentos d
+    LEFT JOIN ${databases.documents}.tblCategoriaDocumentos c
+      ON c.codigoCategoria = d.categoriaDocumento
+    LEFT JOIN ${databases.documents}.tblSubcategoriaDocumentos sc
+      ON sc.codigoSubcategoria = d.subCategoriaDocumento
+     AND d.categoriaDocumento = d.categoriaDocumento
+    LEFT JOIN ${databases.people}.tblSucursales s ON s.Codigo_Sucursal = d.codigoSucursal
+    LEFT JOIN ${databases.documents}.tblEstadoDocumentacion st ON st.codigoEstado = d.estadoDocumento
+    LEFT JOIN ${databases.documents}.tblNivelPermisos n ON n.coditoNivel = d.nivelPermiso
+    LEFT JOIN ${databases.providers}.tblProveedores p ON p.cod_Proveedor = d.codigoProveedor
+    LEFT JOIN ${databases.people}.tblPersonas u ON u.Codigo_Personas = d.usuarioCreacion
+    LEFT JOIN ${databases.documents}.tblArchivosDocumentos a ON a.codigoArchivo = d.codigoArchivo
+  `;
+  // scrHistoricoAdministrativoDoc usa los mismos joins "With or Without"
+  // que scrProximosVencer y conserva el predicado tautologico extraido del
+  // OML para la subcategoria.
+  const administrativeHistoryFromClause = expiringFromClause;
+
   const detailSelect = `
     SELECT d.codigoDocumento AS id,
            d.referenciaDocumento AS reference,
@@ -170,6 +191,34 @@ export function createDocumentRepository(pool) {
   function buildFilters(countryCode, filters) {
     const conditions = ["d.codigoPais = ?"];
     const parameters = [countryCode];
+    if (filters.surface === "administrative-history") {
+      addOptionalFilter(conditions, parameters, filters.branchId, "d.codigoSucursal = ?");
+      addOptionalFilter(conditions, parameters, filters.categoryId, "d.categoriaDocumento = ?");
+      addOptionalFilter(conditions, parameters, filters.subcategoryId, "d.subCategoriaDocumento = ?");
+      addOptionalFilter(conditions, parameters, filters.statusId, "d.estadoDocumento = ?");
+      if (filters.search) {
+        conditions.push("(d.numeroContrato LIKE CONCAT('%', ?, '%') OR d.referenciaDocumento LIKE CONCAT('%', ?, '%'))");
+        parameters.push(filters.search, filters.search);
+      }
+      conditions.push("d.isActive = 1");
+      conditions.push("s.isAdministrativa = 1");
+      return { where: `WHERE ${conditions.join(" AND ")}`, parameters };
+    }
+    if (filters.surface === "expiring") {
+      addOptionalFilter(conditions, parameters, filters.branchId, "d.codigoSucursal = ?");
+      if (filters.startDate && filters.endDate) {
+        conditions.push("((DATE(d.fechaContrato) >= ? AND DATE(d.fechaContrato) <= ?) OR d.codigoSucursal <> 0)");
+        parameters.push(filters.startDate, filters.endDate);
+      }
+      addOptionalFilter(conditions, parameters, filters.categoryId, "d.categoriaDocumento = ?");
+      addOptionalFilter(conditions, parameters, filters.subcategoryId, "d.subCategoriaDocumento = ?");
+      conditions.push("d.estadoDocumento = 4");
+      if (filters.search) {
+        conditions.push("(d.numeroContrato LIKE CONCAT('%', ?, '%') OR d.referenciaDocumento LIKE CONCAT('%', ?, '%'))");
+        parameters.push(filters.search, filters.search);
+      }
+      return { where: `WHERE ${conditions.join(" AND ")}`, parameters };
+    }
     if (!filters.includeInactive) conditions.push("d.isActive = 1");
     const typeCondition = documentTypeCondition(filters.documentType);
     if (typeCondition) conditions.push(typeCondition);
@@ -202,9 +251,20 @@ export function createDocumentRepository(pool) {
       const { where, parameters } = buildFilters(countryCode, filters);
       const offset = (filters.page - 1) * filters.pageSize;
       const sortColumn = SORT_COLUMNS[filters.sortBy];
-      const orderBy = sortColumn && filters.sortDirection
+      const orderBy = filters.surface !== "expiring" && sortColumn && filters.sortDirection
         ? `${sortColumn} ${filters.sortDirection.toUpperCase()}`
         : "s.OrdenSucursal ASC";
+      const listFromClause = filters.surface === "administrative-history"
+        ? administrativeHistoryFromClause
+        : filters.surface === "expiring"
+          ? expiringFromClause
+          : fromClause;
+      const usesDocumentAttachmentId = ["expiring", "branch-history", "administrative-history"].includes(filters.surface);
+      const attachmentIdExpression = usesDocumentAttachmentId ? "d.codigoArchivo" : "a.codigoArchivo";
+      const hasAttachmentExpression = ["branch-history", "administrative-history"].includes(filters.surface)
+        ? "(d.codigoArchivo IS NOT NULL)"
+        : `(a.codigoArchivo IS NOT NULL AND a.isActive = 1
+                 AND (a.CodS3 IS NOT NULL OR OCTET_LENGTH(a.fileData) > 0))`;
       const selectQuery = `
         SELECT d.codigoDocumento AS id,
                CONCAT(s.Codigo_InternoSucursal, ' ', s.Nombre_Sucursal) AS branchName,
@@ -212,6 +272,7 @@ export function createDocumentRepository(pool) {
                s.Nombre_Sucursal AS branchOnlyName,
                d.referenciaDocumento AS reference,
                d.numeroContrato AS description,
+               d.codigoProveedor AS providerId,
                p.Nombre_comercial AS providerName,
                c.nombreCategoria AS categoryName,
                sc.NombreSubcategoria AS subcategoryName,
@@ -219,6 +280,7 @@ export function createDocumentRepository(pool) {
                DATE_FORMAT(d.fechaContrato, '%Y-%m-%d') AS documentDate,
                DATE_FORMAT(d.fechaVencimiento, '%Y-%m-%d') AS expirationDate,
                u.Nombre_Personas AS createdByName,
+               d.nivelPermiso AS levelId,
                n.NivelPermiso AS levelName,
                st.nombreEstado AS statusName,
                d.estadoDocumento AS statusId,
@@ -233,16 +295,15 @@ export function createDocumentRepository(pool) {
                   AND DATEDIFF(d.fechaVencimiento, CURRENT_DATE()) < 90 THEN 'Menos de 3 Meses'
                  ELSE ''
                END AS expirationTime,
-               a.codigoArchivo AS attachmentId,
+               ${attachmentIdExpression} AS attachmentId,
                a.nameFile AS attachmentFileName,
-               (a.codigoArchivo IS NOT NULL AND a.isActive = 1
-                 AND (a.CodS3 IS NOT NULL OR OCTET_LENGTH(a.fileData) > 0)) AS hasAttachment
-        ${fromClause}
+               ${hasAttachmentExpression} AS hasAttachment
+        ${listFromClause}
         ${where}
         ORDER BY ${orderBy}
         LIMIT ${filters.pageSize} OFFSET ${offset}
       `;
-      const countQuery = `SELECT COUNT(*) AS total ${fromClause} ${where}`;
+      const countQuery = `SELECT COUNT(*) AS total ${listFromClause} ${where}`;
       const [[itemsResult], [countRows]] = await Promise.all([
         databasePool.execute(selectQuery, parameters),
         databasePool.execute(countQuery, parameters),
@@ -283,6 +344,148 @@ export function createDocumentRepository(pool) {
         statuses: results[5][0],
         levels: results[6][0],
       };
+    },
+
+    async getHistoryCatalogs(countryCode) {
+      const databasePool = pool || getDatabasePool();
+      const queries = [
+        [`SELECT Codigo_Sucursal AS id,
+                 CONCAT(Codigo_InternoSucursal, ' ', Nombre_Sucursal) AS name
+          FROM ${databases.people}.tblSucursales
+          WHERE Codigo_Pais = ? AND isAdministrativa = 0
+          LIMIT 500`, [countryCode]],
+        [`SELECT codigoCategoria AS id, nombreCategoria AS name
+          FROM ${databases.documents}.tblCategoriaDocumentos
+          WHERE codigoPais = ?
+          LIMIT 50`, [countryCode]],
+        [`SELECT codigoSubcategoria AS id, NombreSubcategoria AS name,
+                codigoCategoria AS categoryId
+          FROM ${databases.documents}.tblSubcategoriaDocumentos
+          WHERE codigoPais = ?
+          LIMIT 50`, [countryCode]],
+        [`SELECT codigoEstado AS id, nombreEstado AS name
+          FROM ${databases.documents}.tblEstadoDocumentacion
+          WHERE codigoPais = ?
+          LIMIT 50`, [countryCode]],
+      ];
+      const results = await Promise.all(queries.map(([sql, params]) => databasePool.execute(sql, params)));
+      return {
+        branches: results[0][0],
+        categories: results[1][0],
+        subcategories: results[2][0],
+        statuses: results[3][0],
+      };
+    },
+
+    async getAdministrativeHistoryCatalogs(countryCode) {
+      const databasePool = pool || getDatabasePool();
+      const queries = [
+        [`SELECT Codigo_Sucursal AS id,
+                 CONCAT(Codigo_InternoSucursal, ' ', Nombre_Sucursal) AS name
+          FROM ${databases.people}.tblSucursales
+          WHERE Codigo_Pais = ? AND isAdministrativa = 1
+          LIMIT 500`, [countryCode]],
+        [`SELECT codigoCategoria AS id, nombreCategoria AS name
+          FROM ${databases.documents}.tblCategoriaDocumentos
+          WHERE codigoPais = ?
+          LIMIT 50`, [countryCode]],
+        [`SELECT codigoSubcategoria AS id, NombreSubcategoria AS name,
+                codigoCategoria AS categoryId
+          FROM ${databases.documents}.tblSubcategoriaDocumentos
+          WHERE codigoPais = ?
+          LIMIT 50`, [countryCode]],
+        [`SELECT codigoEstado AS id, nombreEstado AS name
+          FROM ${databases.documents}.tblEstadoDocumentacion
+          WHERE codigoPais = ?
+          LIMIT 50`, [countryCode]],
+      ];
+      const results = await Promise.all(queries.map(([sql, params]) => databasePool.execute(sql, params)));
+      return {
+        branches: results[0][0],
+        categories: results[1][0],
+        subcategories: results[2][0],
+        statuses: results[3][0],
+      };
+    },
+
+    async getExpiringCatalogs(countryCode) {
+      const databasePool = pool || getDatabasePool();
+      const queries = [
+        [`SELECT Codigo_Sucursal AS id,
+                 CONCAT(Codigo_InternoSucursal, ' -', Nombre_Sucursal) AS name
+          FROM ${databases.people}.tblSucursales
+          WHERE Codigo_Pais = ? AND isActivo = 1
+          ORDER BY OrdenSucursal
+          LIMIT 500`, [countryCode]],
+        [`SELECT codigoCategoria AS id, nombreCategoria AS name
+          FROM ${databases.documents}.tblCategoriaDocumentos
+          WHERE codigoPais = ?
+          LIMIT 50`, [countryCode]],
+        [`SELECT codigoSubcategoria AS id, NombreSubcategoria AS name,
+                codigoCategoria AS categoryId
+          FROM ${databases.documents}.tblSubcategoriaDocumentos
+          WHERE codigoPais = ?
+          LIMIT 50`, [countryCode]],
+      ];
+      const results = await Promise.all(queries.map(([sql, params]) => databasePool.execute(sql, params)));
+      return {
+        branches: results[0][0],
+        categories: results[1][0],
+        subcategories: results[2][0],
+      };
+    },
+
+    async getRegistrationCatalogs(countryCode) {
+      const databasePool = pool || getDatabasePool();
+      const queries = [
+        [`SELECT Codigo_Sucursal AS id,
+                 CONCAT(Codigo_InternoSucursal, ' - ', Nombre_Sucursal) AS name
+          FROM ${databases.people}.tblSucursales
+          WHERE Codigo_Pais = ? AND isAdministrativa = 0 AND isActivo = 1
+          ORDER BY Codigo_InternoSucursal
+          LIMIT 500`, [countryCode]],
+        [`SELECT Codigo_Sucursal AS id,
+                 CONCAT(Codigo_InternoSucursal, ' - ', Nombre_Sucursal) AS name
+          FROM ${databases.people}.tblSucursales
+          WHERE Codigo_Pais = ? AND isAdministrativa = 1 AND isActivo = 1
+            AND Codigo_InternoSucursal = 'FA00'
+          ORDER BY Codigo_InternoSucursal
+          LIMIT 500`, [countryCode]],
+        [`SELECT cod_Proveedor AS id, Nombre_comercial AS name
+          FROM ${databases.providers}.tblProveedores
+          WHERE codPais = ?
+          LIMIT 5000`, [countryCode]],
+        [`SELECT codigoCategoria AS id, nombreCategoria AS name
+          FROM ${databases.documents}.tblCategoriaDocumentos
+          WHERE codigoPais = ?
+          LIMIT 500`, [countryCode]],
+        [`SELECT codigoSubcategoria AS id, NombreSubcategoria AS name,
+                codigoCategoria AS categoryId
+          FROM ${databases.documents}.tblSubcategoriaDocumentos
+          WHERE codigoPais = ? AND codigoCategoria = ?
+          LIMIT 500`, [countryCode, 0]],
+      ];
+      const results = await Promise.all(queries.map(([sql, params]) => databasePool.execute(sql, params)));
+      return {
+        branches: results[0][0],
+        administrativeBranches: results[1][0],
+        providers: results[2][0],
+        categories: results[3][0],
+        subcategories: results[4][0],
+      };
+    },
+
+    async getRegistrationSubcategories(countryCode, categoryId) {
+      const databasePool = pool || getDatabasePool();
+      const [rows] = await databasePool.execute(
+        `SELECT codigoSubcategoria AS id, NombreSubcategoria AS name,
+                codigoCategoria AS categoryId
+         FROM ${databases.documents}.tblSubcategoriaDocumentos
+         WHERE codigoPais = ? AND codigoCategoria = ?
+         LIMIT 500`,
+        [countryCode, categoryId],
+      );
+      return rows;
     },
 
     getById(countryCode, documentId) {
@@ -340,7 +543,7 @@ export function createDocumentRepository(pool) {
           throw invalidCatalog("No fue posible generar la referencia del documento.", "subcategoryId");
         }
 
-        if (document.isActivePrincipal) {
+        if (document.replaceActivePrincipal ?? document.isActivePrincipal) {
           await connection.execute(
             `UPDATE ${databases.documents}.tblDocumentos
              SET IsActivoPrincipal = 0
@@ -389,14 +592,13 @@ export function createDocumentRepository(pool) {
       return getByIdWith(databasePool, countryCode, created.id);
     },
 
-    async updateReference2(countryCode, userId, documentId, secondaryReference) {
+    async updateReference2(countryCode, documentId, secondaryReference) {
       const databasePool = pool || getDatabasePool();
       const [result] = await databasePool.execute(
         `UPDATE ${databases.documents}.tblDocumentos
-         SET referencia2 = ?, usuarioUltimaActualizacion = ?,
-             fechaUltimaActualizacion = DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')
+         SET referencia2 = ?
          WHERE codigoDocumento = ? AND codigoPais = ? AND isActive = 1`,
-        [secondaryReference || null, userId, documentId, countryCode],
+        [secondaryReference, documentId, countryCode],
       );
       if (!result.affectedRows) throw documentNotFound();
       return getByIdWith(databasePool, countryCode, documentId);
@@ -439,7 +641,7 @@ export function createDocumentRepository(pool) {
                 a.ext AS extension, a.CodS3 AS s3Key
          FROM ${databases.documents}.tblDocumentos d
          INNER JOIN ${databases.documents}.tblArchivosDocumentos a
-           ON a.codigoArchivo = d.codigoArchivo AND a.isActive = 1
+           ON a.codigoArchivo = d.codigoArchivo
          WHERE d.codigoDocumento = ? AND d.codigoPais = ? AND d.isActive = 1
          LIMIT 1`,
         [documentId, countryCode],
@@ -608,6 +810,30 @@ export function createDocumentRepository(pool) {
         })),
         books: [...booksById.values()],
       };
+    },
+
+    async getBranchBooks(countryCode, branchId) {
+      const databasePool = pool || getDatabasePool();
+      const [rows] = await databasePool.execute(
+        `SELECT assignment.codigoLibroxSuc AS assignmentId,
+                book.codigoLibro AS bookId, book.nombreLibro AS name,
+                assignment.isObligatorio AS isRequired
+         FROM ${databases.documents}.tblLibrosSucursales book
+         INNER JOIN ${databases.documents}.tblLibroxSucursal assignment
+           ON assignment.codigoLibro = book.codigoLibro
+         INNER JOIN ${databases.people}.tblSucursales branch
+           ON branch.Codigo_Sucursal = assignment.codigoSucursal
+          AND branch.Codigo_Pais = ?
+         WHERE assignment.codigoSucursal = ?
+         LIMIT 500`,
+        [countryCode, branchId],
+      );
+      return rows.map((row) => ({
+        assignmentId: Number(row.assignmentId),
+        bookId: Number(row.bookId),
+        name: row.name,
+        isRequired: Boolean(row.isRequired),
+      }));
     },
 
     async addBookEvidence(countryCode, branchId, userId, assignmentId, attachment) {

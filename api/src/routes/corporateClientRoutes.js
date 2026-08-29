@@ -6,6 +6,7 @@ export function createCorporateClientRouter(service) {
   const controller = createCorporateClientController(service);
   router.get("/", controller.list);
   router.post("/bulk", controller.bulkUpsert);
+  router.get("/:id/contacts", controller.contacts);
   router.get("/:id", controller.get);
   router.post("/", controller.create);
   router.put("/:id", controller.update);

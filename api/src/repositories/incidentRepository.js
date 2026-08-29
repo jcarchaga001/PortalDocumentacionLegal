@@ -35,6 +35,16 @@ function normalizeMetrics(row = {}) {
   };
 }
 
+function incidentPageMetrics(items = []) {
+  const metrics = { open: 0, inProgress: 0, paused: 0, closed: 0 };
+  const keys = { 1: "open", 2: "inProgress", 4: "paused", 5: "closed" };
+  for (const item of items) {
+    const key = keys[Number(item.statusId)];
+    if (key) metrics[key] += 1;
+  }
+  return metrics;
+}
+
 export function createIncidentRepository(pool) {
   const databases = getDatabaseNames();
   const inactiveHumanResources = databaseIdentifier("HR_INACTIVE_DB_NAME", "db8elpwggnwatn");
@@ -124,15 +134,15 @@ export function createIncidentRepository(pool) {
     }
   }
 
-  async function requireIncident(connection, scope, countryCode, incidentId, lock = false) {
+  async function requireIncident(connection, _scope, countryCode, incidentId, lock = false) {
     const [rows] = await connection.execute(
       `SELECT i.Cod_Incidente AS id, i.codigoTipoIncidente AS typeId,
               i.CodigoSucursal AS branchId, i.Cod_EstadoIncidente AS statusId,
               i.codigoReferencia AS reference, i.isExterno AS isExternal
        FROM ${databases.documents}.tblIncidentesExternos i
-       WHERE i.Cod_Incidente = ? AND i.codigoPais = ? AND COALESCE(i.isExterno, 0) = ?
+       WHERE i.Cod_Incidente = ? AND i.codigoPais = ?
        ${lock ? "FOR UPDATE" : ""}`,
-      [incidentId, countryCode, scope === "external" ? 1 : 0],
+      [incidentId, countryCode],
     );
     if (!rows[0]) {
       throw repositoryError("El incidente solicitado no existe.", "INCIDENT_NOT_FOUND", 404);
@@ -262,12 +272,16 @@ export function createIncidentRepository(pool) {
   }
 
   function incidentFilters(scope, countryCode, filters) {
-    const conditions = ["i.codigoPais = ?", "COALESCE(i.isExterno, 0) = ?"];
-    const parameters = [countryCode, scope === "external" ? 1 : 0];
+    // El Aggregate externo legacy no filtra isExterno; el interno sí aplica
+    // `not isExterno`. Se conserva el país como guard de aislamiento local.
+    const conditions = ["i.codigoPais = ?"];
+    const parameters = [countryCode];
+    if (scope === "internal") conditions.push("COALESCE(i.isExterno, 0) = 0");
     addOptionalFilter(conditions, parameters, filters.branchId, "i.CodigoSucursal = ?");
     addOptionalFilter(conditions, parameters, filters.typeId, "i.codigoTipoIncidente = ?");
     addOptionalFilter(conditions, parameters, filters.agencyId, "i.codigoEnte = ?");
-    addOptionalFilter(conditions, parameters, filters.motiveId, "i.Cod_MotivoIncidente = ?");
+    // MotivoIncidenteOnChanged refresca ambas consultas, pero el Aggregate
+    // GetIncidentes no consume el motivo (defecto observable del OML).
     addOptionalFilter(conditions, parameters, filters.statusId, "i.Cod_EstadoIncidente = ?");
     addOptionalFilter(conditions, parameters, filters.startDate, "STR_TO_DATE(LEFT(i.FechaApertura, 10), '%Y-%m-%d') >= ?");
     addOptionalFilter(conditions, parameters, filters.endDate, "STR_TO_DATE(LEFT(i.FechaApertura, 10), '%Y-%m-%d') <= ?");
@@ -300,8 +314,8 @@ export function createIncidentRepository(pool) {
       parameters.push(filters.dueEndDate);
     }
     if (filters.search) {
-      conditions.push("(i.codigoReferencia LIKE CONCAT('%', ?, '%') OR a.AccionReferencia LIKE CONCAT('%', ?, '%') OR a.nombreAccion LIKE CONCAT('%', ?, '%'))");
-      parameters.push(filters.search, filters.search, filters.search);
+      conditions.push("i.codigoReferencia LIKE CONCAT('%', ?, '%')");
+      parameters.push(filters.search);
     }
     return { where: `WHERE ${conditions.join(" AND ")}`, parameters };
   }
@@ -361,7 +375,7 @@ export function createIncidentRepository(pool) {
               i.categoriaIncidente AS categoryId,
               i.codigoEnte AS agencyId, e.nombreEnte AS agencyName,
               i.fechaVisita AS visitDate, i.FechaApertura AS openingDate,
-              i.fechaHoraRegistro AS registrationDate,
+              DATE_FORMAT(i.fechaHoraRegistro, '%Y-%m-%d %H:%i:%s') AS registrationDate,
               i.usuarioVisita AS visitorId, visitor.Nombre_Personas AS visitorName,
               i.usuarioRegistro AS registeredById, registrar.Nombre_Personas AS registeredByName,
               i.observacion AS comment, i.justificacion AS justification,
@@ -375,8 +389,8 @@ export function createIncidentRepository(pool) {
        LEFT JOIN ${databases.documents}.tblEstadosIncidentes st ON st.codigoEstado = i.Cod_EstadoIncidente
        LEFT JOIN ${databases.people}.tblPersonas visitor ON visitor.Codigo_Personas = i.usuarioVisita
        LEFT JOIN ${databases.people}.tblPersonas registrar ON registrar.Codigo_Personas = i.usuarioRegistro
-       WHERE i.Cod_Incidente = ? AND i.codigoPais = ? AND COALESCE(i.isExterno, 0) = ?`,
-      [incidentId, countryCode, scope === "external" ? 1 : 0],
+       WHERE i.Cod_Incidente = ? AND i.codigoPais = ?`,
+      [incidentId, countryCode],
     );
     if (!incidentRows[0]) {
       throw repositoryError("El incidente solicitado no existe.", "INCIDENT_NOT_FOUND", 404);
@@ -395,7 +409,7 @@ export function createIncidentRepository(pool) {
          LEFT JOIN ${databases.people}.tblPersonas responsible ON responsible.Codigo_Personas = a.responsable
          LEFT JOIN ${databases.documents}.tblEstadosIncidentes st ON st.codigoEstado = a.codigoEstado
          WHERE a.codigoIncidente = ? AND a.isActive = 1
-         ORDER BY CAST(a.AccionReferencia AS UNSIGNED), a.codigoAccion`,
+          ORDER BY a.AccionReferencia`,
         [incidentId],
       ),
       source.execute(
@@ -405,7 +419,7 @@ export function createIncidentRepository(pool) {
          FROM ${databases.documents}.tblComentariosIncidentes c
          LEFT JOIN ${databases.people}.tblPersonas p ON p.Codigo_Personas = c.codigoUsuario
          WHERE c.codigoIncidente = ? AND c.codigoPais = ?
-         ORDER BY c.codigoComentario DESC`,
+         LIMIT 50`,
         [incidentId, countryCode],
       ),
       source.execute(
@@ -425,6 +439,41 @@ export function createIncidentRepository(pool) {
       actions: actionRows[0].map((row) => ({ ...row, isAutomatic: Boolean(row.isAutomatic) })),
       comments: commentRows[0],
       actionHistory: historyRows[0],
+    };
+  }
+
+  async function readIncidentAction(scope, countryCode, incidentId, actionId) {
+    const source = databasePool();
+    await requireIncident(source, scope, countryCode, incidentId);
+    const [rows] = await source.execute(
+      `SELECT a.codigoAccion AS id, a.codigoIncidente AS incidentId,
+              a.AccionReferencia AS actionReference, a.nombreAccion AS name,
+              a.descripcionAccion AS description, a.responsable AS responsibleId,
+              responsible.Nombre_Personas AS responsibleName,
+              a.usuarioAdministrador AS administratorId,
+              administrator.Nombre_Personas AS administratorName,
+              DATE_FORMAT(a.fechaInicio, '%Y-%m-%d') AS startDate,
+              DATE_FORMAT(a.fechaEntrega, '%Y-%m-%d') AS dueDate,
+              DATE_FORMAT(a.fechaFin, '%Y-%m-%d') AS closeDate,
+              DATE_FORMAT(a.fechaRegistro, '%Y-%m-%d %H:%i:%s') AS registeredAt,
+              a.codigoEstado AS statusId, a.\`Justificación\` AS justification,
+              a.keyS3 AS s3Key, a.fileName, a.isAutomatic, a.isActive
+       FROM ${databases.documents}.tblAccionesIncidentes a
+       LEFT JOIN ${databases.people}.tblPersonas responsible
+         ON responsible.Codigo_Personas = a.responsable
+       LEFT JOIN ${databases.people}.tblPersonas administrator
+         ON administrator.Codigo_Personas = a.usuarioAdministrador
+       WHERE a.codigoAccion = ? AND a.codigoIncidente = ?
+       LIMIT 1`,
+      [actionId, incidentId],
+    );
+    if (!rows[0]) {
+      throw repositoryError("La accion solicitada no existe.", "INCIDENT_ACTION_NOT_FOUND", 404);
+    }
+    return {
+      ...rows[0],
+      isAutomatic: Boolean(rows[0].isAutomatic),
+      isActive: Boolean(rows[0].isActive),
     };
   }
 
@@ -596,24 +645,17 @@ export function createIncidentRepository(pool) {
                st.nombreEstado AS statusName
         ${fromClause}
         ${where}
-        ORDER BY i.FechaApertura DESC, i.Cod_Incidente DESC
+        ORDER BY i.FechaApertura ASC
         LIMIT ${filters.pageSize} OFFSET ${offset}
       `;
       const countQuery = `SELECT COUNT(*) AS total ${fromClause} ${where}`;
-      const metricsQuery = `
-        SELECT SUM(i.Cod_EstadoIncidente = 1) AS open,
-               SUM(i.Cod_EstadoIncidente = 2) AS inProgress,
-               SUM(i.Cod_EstadoIncidente = 4) AS paused,
-               SUM(i.Cod_EstadoIncidente = 5) AS closed
-        ${fromClause}
-        ${where}
-      `;
-      const [[items], [countRows], [metricRows]] = await Promise.all([
+      const [[items], [countRows]] = await Promise.all([
         databasePool.execute(listQuery, parameters),
         databasePool.execute(countQuery, parameters),
-        databasePool.execute(metricsQuery, parameters),
       ]);
-      return pageResult(items, countRows[0]?.total, filters, normalizeMetrics(metricRows[0]));
+      // GetIncidentesOnAfterFetch filtra GetIncidentes.List, no el universo
+      // completo: los cuatro KPI son métricas de la página actual.
+      return pageResult(items, countRows[0]?.total, filters, incidentPageMetrics(items));
     },
 
     async listActions(scope, countryCode, filters) {
@@ -631,7 +673,9 @@ export function createIncidentRepository(pool) {
         SELECT a.codigoAccion AS id,
                a.AccionReferencia AS actionReference,
                i.Cod_Incidente AS incidentId,
+               i.codigoTipoIncidente AS incidentTypeId,
                i.codigoReferencia AS incidentReference,
+               s.Codigo_Sucursal AS branchId,
                CONCAT_WS(' - ', s.Codigo_InternoSucursal, s.Nombre_Sucursal) AS branchName,
                a.nombreAccion AS actionName,
                a.descripcionAccion AS description,
@@ -758,13 +802,19 @@ export function createIncidentRepository(pool) {
       return readIncident(scope, countryCode, incidentId);
     },
 
+    async getIncidentAction(scope, countryCode, incidentId, actionId) {
+      return readIncidentAction(scope, countryCode, incidentId, actionId);
+    },
+
     async createIncident(scope, countryCode, userId, incident) {
       const connection = await databasePool().getConnection();
       let lockName;
+      let committed = false;
       try {
         await connection.beginTransaction();
         const [branchRows] = await connection.execute(
-          `SELECT Codigo_Sucursal AS id
+          `SELECT Codigo_Sucursal AS id,
+                  CONCAT_WS(' - ', Codigo_InternoSucursal, Nombre_Sucursal) AS branchName
            FROM ${databases.people}.tblSucursales
            WHERE Codigo_Sucursal = ? AND Codigo_Pais = ? AND isActivo = 1 AND isAdministrativa = 0`,
           [incident.branchId, countryCode],
@@ -773,7 +823,7 @@ export function createIncidentRepository(pool) {
           throw repositoryError("La sucursal seleccionada no pertenece al pais.", "INVALID_BRANCH", 400, "branchId");
         }
         const [agencyRows] = await connection.execute(
-          `SELECT codigoEnte AS id, isRegulatorio AS isRegulatory,
+          `SELECT codigoEnte AS id, nombreEnte AS agencyName, isRegulatorio AS isRegulatory,
                   codigoResponsable AS responsibleId, COALESCE(IsExterno, 0) AS isExternal
            FROM ${databases.documents}.tblEntesGubernamentales
            WHERE codigoEnte = ? AND codigoPais = ? AND isActive = 1
@@ -799,7 +849,9 @@ export function createIncidentRepository(pool) {
         if (!typeRows[0]?.prefix) {
           throw repositoryError("El tipo de incidente no tiene nomenclatura configurada.", "INVALID_INCIDENT_TYPE", 409);
         }
-        const [periodRows] = await connection.execute("SELECT DATE_FORMAT(NOW(), '%Y%m') AS period");
+        const [periodRows] = await connection.execute(
+          "SELECT DATE_FORMAT(NOW(), '%Y%m') AS period, DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') AS registeredAt",
+        );
         const referencePrefix = `${typeRows[0].prefix}-${periodRows[0].period}-`;
         lockName = `dl:incident:${countryCode}:${referencePrefix}`;
         const [lockRows] = await connection.execute("SELECT GET_LOCK(?, 5) AS acquired", [lockName]);
@@ -863,10 +915,53 @@ export function createIncidentRepository(pool) {
            VALUES (?, ?, ?, ?, DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s'), 'Creacion accion automatica')`,
           [String(actionResult.insertId), incidentId, userId, countryCode],
         );
+        const registeredAt = periodRows[0].registeredAt;
+        const persistedIncident = {
+          id: incidentId,
+          reference,
+          branchId: incident.branchId,
+          branchName: branchRows[0].branchName,
+          typeId,
+          motiveId: 3,
+          categoryId: 5,
+          agencyId: incident.agencyId,
+          agencyName: agency.agencyName,
+          visitDate,
+          openingDate: scope === "internal" ? registeredAt : incident.visitAt,
+          registrationDate: registeredAt,
+          visitorId: incident.visitorId,
+          registeredById: userId,
+          comment: incident.comment,
+          s3Key: incident.s3Key,
+          statusId: 1,
+          isExternal: scope === "external" ? 1 : Number(Boolean(agency.isExternal)),
+          actions: [{
+            id: actionResult.insertId,
+            actionReference: "1",
+            name: "Revision de Incidente",
+            description: "Accion automatica revision de incidente ",
+            responsibleId: agency.responsibleId,
+            responsibleName: responsible.name,
+            startDate: registeredAt?.slice(0, 10),
+            dueDate: registeredAt?.slice(0, 10),
+            statusId: 2,
+            isAutomatic: true,
+            isActive: true,
+          }],
+          comments: [],
+          actionHistory: [],
+        };
         await connection.commit();
-        return await readIncident(scope, countryCode, incidentId);
+        committed = true;
+        try {
+          return await readIncident(scope, countryCode, incidentId);
+        } catch {
+          // La escritura ya fue confirmada. Mantener el contrato de creación evita
+          // reportar un falso fallo y que el cliente repita una mutación exitosa.
+          return persistedIncident;
+        }
       } catch (error) {
-        await connection.rollback();
+        if (!committed) await connection.rollback();
         throw error;
       } finally {
         if (lockName) {
@@ -918,9 +1013,9 @@ export function createIncidentRepository(pool) {
                   i.CodigoSucursal AS branchId, i.codigoTipoIncidente AS typeId
            FROM ${databases.documents}.tblAccionesIncidentes a
            INNER JOIN ${databases.documents}.tblIncidentesExternos i ON i.Cod_Incidente = a.codigoIncidente
-           WHERE a.codigoAccion = ? AND i.codigoPais = ? AND COALESCE(i.isExterno, 0) = ?
-           FOR UPDATE`,
-          [actionId, countryCode, scope === "external" ? 1 : 0],
+            WHERE a.codigoAccion = ? AND i.codigoPais = ?
+            FOR UPDATE`,
+          [actionId, countryCode],
         );
         const current = rows[0];
         if (!current || !current.isActive) {
@@ -1324,6 +1419,7 @@ export function createIncidentRepository(pool) {
       const databasePool = pool || getDatabasePool();
       const external = scope.startsWith("external");
       const labor = scope.startsWith("labor");
+      const incidentListing = scope === "internal-list" || scope === "external-list";
       const legacyLaborActions = scope === "labor-actions-legacy";
       const incidentActions = scope === "internal-actions" || scope === "external-actions";
       const laborActionListing = scope === "labor-actions" && !filters.incidentId;
@@ -1331,10 +1427,47 @@ export function createIncidentRepository(pool) {
         ? "tblEstadosIncidentes"
         : labor ? "tblEstadosIncidentes_Legal" : "tblEstadosIncidentes";
       const statusFilter = scope === "labor-cases" ? "AND codigoEstado IN (1, 2, 5)" : "";
-      const activeStatusFilter = laborActionListing ? "" : "WHERE isActive = 1";
+      const activeStatusFilter = laborActionListing || incidentListing ? "" : "WHERE isActive = 1";
+      const statusOrder = incidentListing ? "" : "ORDER BY codigoEstado";
+      const branchLimit = incidentListing ? "LIMIT 500" : "";
+      const agencyFilter = scope === "external-list"
+        ? "isRegulatorio = 1"
+        : external ? "1 = 1" : "COALESCE(IsExterno, 0) = 0";
       const activeActionFilter = laborActionListing ? "" : "WHERE IsActivo = 1";
       const recipientBranchFilter = filters.branchId ? "AND Codigo_Sucursal = ?" : "AND 1 = 0";
       const recipientParameters = filters.branchId ? [countryCode, filters.branchId] : [countryCode];
+      if (incidentActions && !filters.incidentId) {
+        const [[branchRows], [statusRows], [responsibleRows]] = await Promise.all([
+          databasePool.execute(
+            `SELECT Codigo_Sucursal AS id,
+                    CONCAT_WS(' - ', Codigo_InternoSucursal, Nombre_Sucursal) AS name
+             FROM ${databases.people}.tblSucursales
+             WHERE Codigo_Pais = ? AND isAdministrativa = 0 AND isActivo = 1
+             ORDER BY OrdenSucursal
+             LIMIT 500`,
+            [countryCode],
+          ),
+          databasePool.execute(
+            `SELECT codigoEstado AS id, nombreEstado AS name
+             FROM ${databases.documents}.tblEstadosIncidentes
+             WHERE codigoEstado <> 1
+             LIMIT 50`,
+          ),
+          databasePool.execute(
+            `SELECT ua.codigoUsuario AS id, p.Nombre_Personas AS name,
+                    p.Correo_electronico AS email
+             FROM ${databases.documents}.tblUsuariosAcciones ua
+             INNER JOIN ${databases.people}.tblPersonas p ON ua.codigoUsuario = p.Codigo_Personas
+             WHERE ua.codigoPais = ?`,
+            [countryCode],
+          ),
+        ]);
+        return {
+          branches: branchRows,
+          statuses: statusRows,
+          responsiblePeople: responsibleRows,
+        };
+      }
       let responsiblePeopleQuery = [
         `SELECT DISTINCT p.Codigo_Personas AS id, p.Nombre_Personas AS name
          FROM ${databases.documents}.tblUsuariosAcciones ua
@@ -1348,27 +1481,41 @@ export function createIncidentRepository(pool) {
         const [incidentRows] = await databasePool.execute(
           `SELECT i.CodigoSucursal AS branchId, i.codigoTipoIncidente AS typeId
            FROM ${databases.documents}.tblIncidentesExternos i
-           WHERE i.Cod_Incidente = ? AND i.codigoPais = ? AND COALESCE(i.isExterno, 0) = ?
-           LIMIT 1`,
-          [filters.incidentId, countryCode, external ? 1 : 0],
+            WHERE i.Cod_Incidente = ? AND i.codigoPais = ?
+            LIMIT 1`,
+          [filters.incidentId, countryCode],
         );
         const incident = incidentRows[0];
         if (!incident) {
           throw repositoryError("El incidente solicitado no existe.", "INCIDENT_NOT_FOUND", 404);
         }
         responsiblePeopleQuery = [
-          `SELECT p.Codigo_Personas AS id, p.Nombre_Personas AS name
+          `SELECT p.Codigo_Personas AS id, p.Nombre_Personas AS name,
+                  p.Correo_electronico AS email
            FROM ${databases.people}.tblPersonas p
-           WHERE p.CodigoPais = ? AND p.Codigo_Sucursal = ? AND p.isActivo = 1
+           WHERE p.CodigoPais = ? AND p.Codigo_Sucursal = ?
            UNION
-           SELECT p.Codigo_Personas AS id, p.Nombre_Personas AS name
+           SELECT ua.codigoUsuario AS id, p.Nombre_Personas AS name,
+                  p.Correo_electronico AS email
            FROM ${databases.documents}.tblUsuariosAcciones ua
            INNER JOIN ${databases.people}.tblPersonas p ON p.Codigo_Personas = ua.codigoUsuario
-           WHERE ua.codigoTipoIncidente = ? AND ua.codigoPais = ? AND ua.isActive = 1
-             AND p.CodigoPais = ? AND p.isActivo = 1
-           ORDER BY name`,
-          [countryCode, incident.branchId, incident.typeId, countryCode, countryCode],
+           WHERE ua.codigoTipoIncidente = ? AND ua.codigoPais = ?`,
+          [countryCode, incident.branchId, incident.typeId, countryCode],
         ];
+
+        const [[statusRows], [responsibleRows]] = await Promise.all([
+          databasePool.execute(
+            `SELECT codigoEstado AS id, nombreEstado AS name
+             FROM ${databases.documents}.tblEstadosIncidentes
+             WHERE codigoEstado <> 1
+             LIMIT 50`,
+          ),
+          databasePool.execute(...responsiblePeopleQuery),
+        ]);
+        return {
+          statuses: statusRows,
+          responsiblePeople: responsibleRows,
+        };
       }
       const legalResponsiblePeopleQuery = [
         `SELECT p.Codigo_Personas AS id, p.Nombre_Personas AS name
@@ -1415,17 +1562,18 @@ export function createIncidentRepository(pool) {
         ];
       }
       const queries = [
-        [`SELECT Codigo_Sucursal AS id, CONCAT_WS(' - ', Codigo_InternoSucursal, Nombre_Sucursal) AS name FROM ${databases.people}.tblSucursales WHERE Codigo_Pais = ? AND isAdministrativa = 0 AND isActivo = 1 ORDER BY OrdenSucursal`, [countryCode]],
-        [`SELECT codigoEstado AS id, nombreEstado AS name FROM ${databases.documents}.${statusesTable} ${activeStatusFilter} ${statusFilter} ORDER BY codigoEstado`, []],
+        [`SELECT Codigo_Sucursal AS id, CONCAT_WS(' - ', Codigo_InternoSucursal, Nombre_Sucursal) AS name FROM ${databases.people}.tblSucursales WHERE Codigo_Pais = ? AND isAdministrativa = 0 AND isActivo = 1 ORDER BY OrdenSucursal ${branchLimit}`, [countryCode]],
+        [`SELECT codigoEstado AS id, nombreEstado AS name FROM ${databases.documents}.${statusesTable} ${activeStatusFilter} ${statusFilter} ${statusOrder}`, []],
         [`SELECT codigoMotivo AS id, nombreMotivo AS name FROM ${databases.documents}.tblMotivosIncidentes WHERE codigoPais = ? AND isActive = 1 AND ${external ? "COALESCE(isInterno, 0) = 0" : "isInterno = 1 AND codigoMotivo = 4"} ORDER BY nombreMotivo`, [countryCode]],
-        [`SELECT codigoEnte AS id, nombreEnte AS name, isRegulatorio AS isRegulatory, codigoResponsable AS responsibleId, COALESCE(IsExterno, 0) AS isExternal FROM ${databases.documents}.tblEntesGubernamentales WHERE codigoPais = ? AND isActive = 1 AND ${external ? "1 = 1" : "COALESCE(IsExterno, 0) = 0"} ORDER BY nombreEnte`, [countryCode]],
+        [`SELECT codigoEnte AS id, nombreEnte AS name, isRegulatorio AS isRegulatory, codigoResponsable AS responsibleId, COALESCE(IsExterno, 0) AS isExternal FROM ${databases.documents}.tblEntesGubernamentales WHERE codigoPais = ? AND isActive = 1 AND ${agencyFilter} ORDER BY nombreEnte LIMIT 50`, [countryCode]],
         responsiblePeopleQuery,
         legalResponsiblePeopleQuery,
         [`SELECT coditoNivel AS id, NivelPermiso AS name FROM ${databases.documents}.tblNivelPermisos WHERE isActive = 1 ORDER BY coditoNivel`, []],
         [`SELECT codAccion AS id, NombreAccion AS name FROM ${databases.documents}.tblAcciones_Legal ${activeActionFilter} ORDER BY NombreAccion`, []],
         [`SELECT CodPrioridad AS id, NombreEstado AS name FROM ${databases.documents}.tblPrioridadAccion_Legal WHERE isActive = 1 ORDER BY CodPrioridad`, []],
-        [`SELECT Codigo_Personas AS id, Nombre_Personas AS name FROM ${databases.people}.tblPersonas WHERE CodigoPais = ? AND isActivo = 1 ${recipientBranchFilter} ORDER BY Nombre_Personas`, recipientParameters],
+        [`SELECT Codigo_Personas AS id, Nombre_Personas AS name FROM ${databases.people}.tblPersonas WHERE CodigoPais = ? AND isActivo = 1 ${recipientBranchFilter} ORDER BY Nombre_Personas LIMIT 50`, recipientParameters],
         laborResponsiblePeopleQuery,
+        [`SELECT codigoTipoIncidente AS id, tipoincidente AS name, nomenclatura AS prefix FROM ${databases.documents}.tblTiposIncidentes LIMIT 50`, []],
       ];
       const results = await Promise.all(queries.map(([sql, parameters]) => databasePool.execute(sql, parameters)));
       return {
@@ -1439,6 +1587,7 @@ export function createIncidentRepository(pool) {
         actions: results[7][0],
         priorities: results[8][0],
         recipients: results[9][0],
+        types: results[11][0],
       };
     },
   };

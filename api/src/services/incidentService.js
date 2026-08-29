@@ -167,16 +167,16 @@ function normalizeComment(input = {}) {
   };
 }
 
-function normalizePaging(query = {}) {
+function normalizePaging(query = {}, defaultPageSize = 20) {
   return {
     page: positiveInteger(query.page) || 1,
-    pageSize: Math.min(positiveInteger(query.pageSize) || 20, 100),
+    pageSize: Math.min(positiveInteger(query.pageSize) || defaultPageSize, 100),
   };
 }
 
 export function normalizeIncidentFilters(query = {}) {
   return {
-    ...normalizePaging(query),
+    ...normalizePaging(query, 50),
     branchId: positiveInteger(query.branchId),
     typeId: positiveInteger(query.typeId),
     agencyId: positiveInteger(query.agencyId),
@@ -332,7 +332,7 @@ export function createIncidentService(
     },
 
     catalogs(scope, countryCode, query = {}) {
-      if (!["internal", "external", "internal-actions", "external-actions", "labor-cases", "labor-actions", "labor-actions-legacy"].includes(scope)) {
+      if (!["internal", "external", "internal-list", "external-list", "internal-actions", "external-actions", "labor-cases", "labor-actions", "labor-actions-legacy"].includes(scope)) {
         const error = new Error("El catalogo solicitado no es valido.");
         error.status = 400;
         error.code = "INVALID_INCIDENT_CATALOG";
@@ -349,6 +349,16 @@ export function createIncidentService(
       return incidentRepository.getIncident(scope, countryCode, requireIncidentId(incidentId));
     },
 
+    getIncidentAction(scope, countryCode, incidentId, actionId) {
+      validateScope(scope);
+      return incidentRepository.getIncidentAction(
+        scope,
+        countryCode,
+        requireIncidentId(incidentId),
+        requirePositiveInteger(actionId, "actionId", "La accion solicitada no es valida."),
+      );
+    },
+
     async createIncident(scope, countryCode, userId, input) {
       validateScope(scope);
       const normalizedUserId = requirePositiveInteger(userId, "userId", "La sesion no contiene un usuario valido.");
@@ -362,6 +372,9 @@ export function createIncidentService(
       const automaticAction = Array.isArray(result?.actions)
         ? result.actions.find((action) => Boolean(action.isAutomatic)) || result.actions[0]
         : null;
+      if (Number(result?.typeId) !== 2) {
+        return notificationResult(result, skippedNotification("OML_NOTIFICATION_ONLY_FOR_REGULATORY_INCIDENT"));
+      }
       return runPostCommitNotification(result, async () => {
         if (!automaticAction?.responsibleId) {
           throw notificationError(

@@ -13,6 +13,7 @@ test("el rango visible refresca el histórico de sucursales sin restringir su co
   });
 
   assert.deepEqual(filters, {
+    surface: "branch-history",
     branchId: 12,
     categoryId: 3,
     subcategoryId: 7,

@@ -28,7 +28,7 @@ export function DocumentAttachmentDrawer({ preview, onClose }) {
         <Button
           type="text"
           href={preview.url}
-          download={preview.fileName}
+          download={preview.downloadFileName || preview.fileName}
           icon={<DownloadOutlined />}
           aria-label="Descargar archivo"
           title="Descargar archivo"

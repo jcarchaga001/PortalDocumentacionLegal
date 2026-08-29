@@ -23,6 +23,18 @@ export function createIncidentController(incidentService, { logError = console.e
         const catalogs = await incidentService.catalogs(req.params.scope, req.auth.countryCode, req.query);
         res.json(normalizedSuccess("Catalogos de incidentes consultados correctamente.", catalogs));
       } catch (error) {
+        if (["internal-actions", "external-actions"].includes(req.params.scope)
+          && isDatabaseQueryFailure(error)) {
+          logError("Incident action catalog query failed.", {
+            code: error.code || null,
+            errno: error.errno || null,
+            sqlState: error.sqlState || null,
+          });
+          res.status(500).json(normalizedFailure("Error executing query.", {
+            code: INCIDENT_ACTION_QUERY_ERROR,
+          }));
+          return;
+        }
         next(error);
       }
     },
@@ -78,6 +90,20 @@ export function createIncidentController(incidentService, { logError = console.e
       try {
         const data = await incidentService.getIncident(req.params.scope, req.auth.countryCode, req.params.incidentId);
         res.json(normalizedSuccess("Detalle del incidente consultado correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+
+    async incidentAction(req, res, next) {
+      try {
+        const data = await incidentService.getIncidentAction(
+          req.params.scope,
+          req.auth.countryCode,
+          req.params.incidentId,
+          req.params.actionId,
+        );
+        res.json(normalizedSuccess("Detalle de la accion consultado correctamente.", data));
       } catch (error) {
         next(error);
       }

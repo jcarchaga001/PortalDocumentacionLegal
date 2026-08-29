@@ -1,20 +1,29 @@
-import {
-  DownloadOutlined,
-  EyeOutlined,
-  FileExcelOutlined,
-  FileImageOutlined,
-  PlusOutlined,
-  StopOutlined,
-} from "@ant-design/icons";
-import { Button, Drawer, Form, Input, Modal, Select, Space, Table, Tag, message } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
+import { Button, Drawer, Form, Input, Modal, Select, Space, Table, message } from "antd";
 import { useEffect, useState } from "react";
 import { useHistory } from "react-router-dom";
 import { LegacyDateRangePicker } from "../components/LegacyDateRangePicker.jsx";
 import { useAuth } from "../config/AuthContext.jsx";
+import { LEGACY_FEEDBACK_CONTRACTS, showLegacyFeedback } from "../config/legacyFeedbackContracts.js";
+import { writeLegacySelectedDocumentId } from "../config/legacyDocumentContext.js";
 import { ROUTES } from "../routes/routePaths.js";
 import { downloadDocumentXlsx, documentExportTimestamp } from "../services/documentExportService.js";
-import { deleteDocument, getDocumentAttachment, getDocumentCatalogs, getDocuments } from "../services/documentService.js";
+import {
+  deleteDocument,
+  getBranchDocumentHistoryCatalogs,
+  getDocumentAttachment,
+  getDocuments,
+} from "../services/documentService.js";
+import { BRANCH_DOCUMENT_EXPORT_COLUMNS } from "./documentExportMappings.js";
 import { buildLegacyBranchHistoryFilters } from "./documentHistoryFilters.js";
+import {
+  LEGACY_BRANCH_HISTORY_TABLE_WIDTH,
+  legacyBranchHistoryHasAttachment,
+  legacyBranchHistoryInitialRange,
+  legacyBranchHistoryLevelTone,
+  legacyBranchHistorySort,
+  legacyBranchHistoryStatusTone,
+} from "./documentHistoryParity.js";
 
 const PAGE_SIZE = 50;
 
@@ -28,60 +37,79 @@ function PreviewContent({ extension, url }) {
   if (["jpg", "jpeg", "png", "bmp"].includes(extension)) {
     return <img className="legacy-document-image" src={url} alt="Vista previa del documento" />;
   }
-  if (extension === "pdf") return <iframe className="legacy-document-pdf" src={url} title="Vista previa del documento" sandbox="" referrerPolicy="no-referrer" />;
+  if (extension === "pdf") {
+    return <iframe className="legacy-document-pdf" src={url} title="Vista previa del documento" sandbox="" referrerPolicy="no-referrer" />;
+  }
   return <div className="legacy-document-empty-file">No se puede leer archivo (Archivo con errores)</div>;
 }
 
-function documentColumns(openDetail, openAttachment, canDelete, confirmDelete) {
+function LegacyTag({ children, tone }) {
+  if (!children) return null;
+  return <span className={`legacy-history-tag ${tone}`.trim()}>{children}</span>;
+}
+
+function sortable(sortState, key) {
+  return {
+    sorter: true,
+    sortDirections: ["ascend", "descend", "ascend"],
+    sortOrder: sortState.sortBy === key ? sortState.sortDirection : null,
+  };
+}
+
+function documentColumns(openDetail, openAttachment, canDelete, confirmDelete, sortState) {
   return [
-  { title: "Sucursal", dataIndex: "branchName", key: "branchName", fixed: "left", width: 190 },
-  { title: "Referencia", dataIndex: "reference", key: "reference", width: 140 },
-  { title: "Descripción", dataIndex: "description", key: "description", width: 260, ellipsis: true },
-  { title: "Proveedor", dataIndex: "providerName", key: "providerName", width: 180, ellipsis: true },
-  { title: "Categoría", dataIndex: "categoryName", key: "categoryName", width: 180 },
-  { title: "Subcategoría", dataIndex: "subcategoryName", key: "subcategoryName", width: 220 },
-  { title: "Referencia 2", dataIndex: "secondaryReference", key: "secondaryReference", width: 140 },
-  { title: "Fecha de Contrato", dataIndex: "documentDate", key: "documentDate", width: 150 },
-  { title: "Fecha Vencimiento", dataIndex: "expirationDate", key: "expirationDate", width: 160 },
-  { title: "Usuario carga", dataIndex: "createdByName", key: "createdByName", width: 170 },
-  { title: "Nivel Documento", dataIndex: "levelName", key: "levelName", width: 150 },
-  {
-    title: "Estado",
-    dataIndex: "statusName",
-    key: "statusName",
-    width: 130,
-    render: (value) => <Tag color={value === "Vigente" ? "green" : value === "Por Vencer" ? "gold" : "default"}>{value || "—"}</Tag>,
-  },
-  {
-    title: "",
-    key: "actions",
-    fixed: "right",
-    width: 132,
-    render: (_, record) => (
-      <Space size={4}>
-        <Button type="text" size="small" icon={<EyeOutlined />} aria-label="Ver documento" onClick={() => openDetail(record)} />
-        <Button
-          type="text"
-          size="small"
-          icon={<FileImageOutlined />}
-          aria-label="Ver Archivo"
-          title="Ver Archivo"
-          disabled={!record.hasAttachment}
-          onClick={() => openAttachment(record)}
-        />
-        {canDelete ? (
-          <Button
-            type="text"
-            size="small"
-            icon={<StopOutlined style={{ color: "rgb(201, 6, 6)" }} />}
-            aria-label="Anular"
-            title="Anular"
-            onClick={() => confirmDelete(record)}
-          />
-        ) : null}
-      </Space>
-    ),
-  },
+    { title: "Sucursal", dataIndex: "branchName", key: "branchName", width: 133, ...sortable(sortState, "branchName") },
+    { title: "Referencia", dataIndex: "reference", key: "reference", width: 128, ...sortable(sortState, "reference") },
+    { title: "Descripción", dataIndex: "description", key: "description", width: 118 },
+    {
+      title: "Proveedor",
+      dataIndex: "providerName",
+      key: "providerId",
+      width: 131,
+      ...sortable(sortState, "providerId"),
+    },
+    { title: "Categoría", dataIndex: "categoryName", key: "categoryName", width: 123, ...sortable(sortState, "categoryName") },
+    { title: "Subcategoría", dataIndex: "subcategoryName", key: "subcategoryName", width: 145, ...sortable(sortState, "subcategoryName") },
+    { title: "Referencia 2", dataIndex: "secondaryReference", key: "secondaryReference", width: 135 },
+    { title: "Fecha de Contrato", dataIndex: "documentDate", key: "documentDate", width: 177, ...sortable(sortState, "documentDate") },
+    { title: "Fecha Vencimiento", dataIndex: "expirationDate", key: "expirationDate", width: 180, ...sortable(sortState, "expirationDate") },
+    { title: "Usuario Carga", dataIndex: "createdByName", key: "createdByName", width: 133 },
+    {
+      title: "Nivel Documento",
+      dataIndex: "levelName",
+      key: "levelName",
+      width: 154,
+      render: (value, record) => <LegacyTag tone={legacyBranchHistoryLevelTone(record.levelId)}>{value}</LegacyTag>,
+    },
+    {
+      title: "Estado",
+      dataIndex: "statusName",
+      key: "statusName",
+      width: 104,
+      render: (value, record) => <LegacyTag tone={legacyBranchHistoryStatusTone(record.statusId)}>{value}</LegacyTag>,
+    },
+    {
+      title: "",
+      key: "actions",
+      width: 132,
+      render: (_, record) => (
+        <Space className="legacy-history-actions" size={16}>
+          <button type="button" className="legacy-history-action" aria-label="Ver Detalle" title="Ver Detalle" onClick={() => openDetail(record)}>
+            <i className="icon fa fa-external-link fa-1x" aria-hidden="true" />
+          </button>
+          {legacyBranchHistoryHasAttachment(record) ? (
+            <button type="button" className="legacy-history-action is-file" aria-label="Ver Archivo" title="Ver Archivo" onClick={() => openAttachment(record)}>
+              <i className="icon fa fa-file-image-o fa-2x" aria-hidden="true" />
+            </button>
+          ) : null}
+          {canDelete ? (
+            <button type="button" className="legacy-history-action is-delete" aria-label="Anular" title="Anular" onClick={() => confirmDelete(record)}>
+              <i className="icon fa fa-ban fa-2x" aria-hidden="true" />
+            </button>
+          ) : null}
+        </Space>
+      ),
+    },
   ];
 }
 
@@ -92,24 +120,32 @@ export function DocumentHistoryPage() {
   const [rows, setRows] = useState([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: PAGE_SIZE, total: 0 });
   const [catalogs, setCatalogs] = useState({ branches: [], categories: [], subcategories: [], statuses: [] });
+  const [sortState, setSortState] = useState({});
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const canDelete = [7, 32].includes(Number(user?.positionCode));
   const todayIso = localTodayIso();
-  const initialDateRange = [todayIso, todayIso];
+  const initialDateRange = legacyBranchHistoryInitialRange(todayIso);
 
   function openDetail(record) {
-    history.push(`${ROUTES.documentDetail}?IdRegistro=${record.id}`);
+    writeLegacySelectedDocumentId(record.id);
+    history.push(ROUTES.documentDetail);
   }
 
   async function openAttachment(record) {
     const result = await getDocumentAttachment(record.id);
+    const fileName = record.attachmentFileName || record.reference || "Documento";
     if (!result.success) {
-      message.error(result.message);
+      if (result.error?.code === "DOCUMENT_ATTACHMENT_NOT_FOUND") {
+        setPreview({ url: null, fileName, extension: "" });
+      } else {
+        message.error(result.message);
+      }
       return;
     }
-    const fileName = record.attachmentFileName || record.reference || "Documento";
     const extension = String(fileName).split(".").pop().toLowerCase();
     setPreview({
       url: URL.createObjectURL(result.data),
@@ -123,57 +159,14 @@ export function DocumentHistoryPage() {
   }, [preview?.url]);
 
   function confirmDelete(record) {
-    Modal.confirm({
-      title: Number(user?.countryCode) === 4 ? "Farmacias del Ahorro" : "Farmavalue",
-      content: "Confirma que desea eliminar el documento",
-      icon: null,
-      okText: "Aceptar",
-      cancelText: "Cancelar",
-      async onOk() {
-        const result = await deleteDocument(record.id);
-        if (!result.success) {
-          message.error(result.message);
-          throw new Error(result.message);
-        }
-        message.success("Registro eliminado exitosamente");
-        await loadDocuments(form.getFieldsValue(), pagination.current, pagination.pageSize);
-      },
-    });
+    setPendingDelete(record);
   }
 
-  async function exportDocuments() {
-    setExporting(true);
-    try {
-      const result = await downloadDocumentXlsx({
-        filters: buildLegacyBranchHistoryFilters(form.getFieldsValue()),
-        fileName: `DocumentacionLegalHN_${documentExportTimestamp()}.xlsx`,
-        sheetName: "DocumentacionLegalHN",
-        columns: [
-          { title: "nivelDocumento", dataIndex: "levelName", width: 20 },
-          { title: "usuarioCreacion", dataIndex: "createdByName", width: 30 },
-          { title: "codInternoSucursal", dataIndex: "branchCode", width: 20 },
-          { title: "Proveedor", dataIndex: "providerName", width: 32 },
-          { title: "fechaVencimiento", dataIndex: "expirationDate", width: 20 },
-          { title: "fechaContrato", dataIndex: "documentDate", width: 18 },
-          { title: "numContrato", dataIndex: "description", width: 34 },
-          { title: "sucursal", dataIndex: "branchOnlyName", width: 32 },
-          { title: "estado", dataIndex: "statusName", width: 18 },
-          { title: "numRefencia", dataIndex: "reference", width: 22 },
-          { title: "Categoria", dataIndex: "categoryName", width: 24 },
-        ],
-      });
-      if (!result.success) message.warning(result.message);
-    } catch {
-      message.error("No fue posible generar el archivo de Excel.");
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function loadDocuments(values = {}, page = 1, pageSize = pagination.pageSize) {
+  async function loadDocuments(values = {}, page = 1, pageSize = pagination.pageSize, nextSort = sortState) {
     setLoading(true);
     const result = await getDocuments({
       ...buildLegacyBranchHistoryFilters(values),
+      ...nextSort,
       page,
       pageSize,
     });
@@ -188,9 +181,46 @@ export function DocumentHistoryPage() {
     setLoading(false);
   }
 
+  async function executeDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    const result = await deleteDocument(pendingDelete.id);
+    if (!result.success) {
+      message.error(result.message);
+      setDeleting(false);
+      return;
+    }
+    setPendingDelete(null);
+    setDeleting(false);
+    await loadDocuments(form.getFieldsValue(), pagination.current, pagination.pageSize, sortState);
+  }
+
+  async function exportDocuments() {
+    setExporting(true);
+    try {
+      const result = await downloadDocumentXlsx({
+        filters: buildLegacyBranchHistoryFilters(form.getFieldsValue()),
+        fileName: `DocumentacionLegalHN_${documentExportTimestamp()}.xlsx`,
+        sheetName: "Sheet1",
+        columns: BRANCH_DOCUMENT_EXPORT_COLUMNS,
+      });
+      if (!result.success) {
+        if (result.error?.code === "EMPTY_EXPORT") showLegacyFeedback(message, LEGACY_FEEDBACK_CONTRACTS.emptyExport);
+        else message.warning(result.message);
+      }
+    } catch {
+      message.error("No fue posible generar el archivo de Excel.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   useEffect(() => {
     let active = true;
-    Promise.all([getDocumentCatalogs(), getDocuments({ page: 1, pageSize: PAGE_SIZE })]).then(([catalogResult, documentResult]) => {
+    Promise.all([
+      getBranchDocumentHistoryCatalogs(),
+      getDocuments({ ...buildLegacyBranchHistoryFilters({}), page: 1, pageSize: PAGE_SIZE }),
+    ]).then(([catalogResult, documentResult]) => {
       if (!active) return;
       if (catalogResult.success) setCatalogs((current) => ({ ...current, ...catalogResult.data }));
       if (documentResult.success) {
@@ -209,16 +239,21 @@ export function DocumentHistoryPage() {
   }, []);
 
   const options = (items) => (items || []).map((item) => ({ value: item.id, label: item.name }));
+  const confirmationTitle = Number(user?.countryCode) === 4 ? "Farmacias del Ahorro" : "Farmavalue";
+  const confirmationLogo = Number(user?.countryCode) === 4
+    ? "/brand/branch-detail/logoFarmaciaAhorro.jpg"
+    : "/brand/logo.png";
 
   return (
     <div className="legacy-history-page">
       <div className="legacy-history-new-row">
         <button type="button" onClick={() => history.push(ROUTES.documentCreate)}>
-          <PlusOutlined /> Nuevo Documento
+          <span aria-hidden="true">+</span> Nuevo Documento
         </button>
         <Button
+          className="legacy-history-excel"
           type="text"
-          icon={<FileExcelOutlined style={{ color: "rgb(8, 169, 62)", fontSize: 20 }} />}
+          icon={<i className="icon fa fa-file-excel-o fa-1x" aria-hidden="true" />}
           aria-label="Descargar Excel"
           title="Descargar Excel"
           loading={exporting}
@@ -233,7 +268,7 @@ export function DocumentHistoryPage() {
         layout="vertical"
         className="legacy-history-filters"
         initialValues={{ dateRange: initialDateRange }}
-        onValuesChange={(_, values) => loadDocuments(values, 1, pagination.pageSize)}
+        onValuesChange={(_, values) => loadDocuments(values, 1, pagination.pageSize, sortState)}
       >
         <Form.Item label="Sucursal" name="branchId"><Select allowClear showSearch placeholder="Seleccione Sucursal" options={options(catalogs.branches)} /></Form.Item>
         <Form.Item label="Fechas" name="dateRange">
@@ -253,19 +288,34 @@ export function DocumentHistoryPage() {
       <Table
         className="legacy-history-table"
         rowKey={(record) => record.id || record.reference}
-        columns={documentColumns(openDetail, openAttachment, canDelete, confirmDelete)}
+        columns={documentColumns(openDetail, openAttachment, canDelete, confirmDelete, sortState)}
         dataSource={rows}
         loading={loading}
-        scroll={{ x: 2200 }}
-        pagination={{ ...pagination, showSizeChanger: false }}
-        onChange={(nextPagination) => loadDocuments(form.getFieldsValue(), nextPagination.current, nextPagination.pageSize)}
+        tableLayout="fixed"
+        scroll={{ x: LEGACY_BRANCH_HISTORY_TABLE_WIDTH }}
+        pagination={{
+          ...pagination,
+          showSizeChanger: false,
+          showLessItems: true,
+          showTotal: (total, range) => `${range[0]} to ${range[1]} of ${total} items`,
+        }}
+        onChange={(nextPagination, _filters, sorter, extra) => {
+          const nextSort = legacyBranchHistorySort(sorter);
+          setSortState(nextSort);
+          loadDocuments(
+            form.getFieldsValue(),
+            extra?.action === "sort" ? 1 : nextPagination.current,
+            nextPagination.pageSize,
+            nextSort,
+          );
+        }}
         size="middle"
       />
 
       <Drawer
         title="Vista Previa de Archivo"
         placement="right"
-        width={900}
+        width="50%"
         open={Boolean(preview)}
         onClose={() => setPreview(null)}
         extra={preview?.url ? (
@@ -277,6 +327,30 @@ export function DocumentHistoryPage() {
       >
         {preview ? <PreviewContent {...preview} /> : null}
       </Drawer>
+
+      <Modal
+        className="legacy-history-confirm-modal"
+        open={Boolean(pendingDelete)}
+        title={null}
+        footer={null}
+        closable={false}
+        maskClosable={false}
+        centered
+        width={500}
+        onCancel={() => !deleting && setPendingDelete(null)}
+      >
+        <div className="legacy-history-confirm-body">
+          <img src={confirmationLogo} alt="" />
+          <div>
+            <h2>{confirmationTitle}</h2>
+            <p>Confirma que desea eliminar el documento</p>
+          </div>
+        </div>
+        <div className="legacy-history-confirm-actions">
+          <Button className="is-cancel" disabled={deleting} onClick={() => setPendingDelete(null)}>Cancelar</Button>
+          <Button className="is-accept" loading={deleting} onClick={executeDelete}>Aceptar</Button>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -98,6 +98,44 @@ export function createCatalogRepository(pool) {
       };
     },
 
+    async getUserPermissionLookups(countryCode) {
+      const databasePool = getPool();
+      const [[branches], [positions]] = await Promise.all([
+        databasePool.execute(`
+          SELECT Codigo_Sucursal AS id,
+                 CONCAT(Codigo_InternoSucursal, ' - ', Nombre_Sucursal) AS name
+          FROM ${databases.people}.tblSucursales
+          WHERE Codigo_Pais = ?
+          LIMIT 500
+        `, [countryCode]),
+        databasePool.execute(`
+          SELECT Codigo_Puesto AS id, Nombre_Puesto AS name
+          FROM ${databases.people}.tblPuestos
+          LIMIT 1000
+        `),
+      ]);
+      return { branches, positions };
+    },
+
+    async getDocumentCategoryLookups(countryCode) {
+      const databasePool = getPool();
+      const [[branches], [positions]] = await Promise.all([
+        databasePool.execute(`
+          SELECT Codigo_Sucursal AS id,
+                 CONCAT(Codigo_InternoSucursal, ' - ', Nombre_Sucursal) AS name
+          FROM ${databases.people}.tblSucursales
+          WHERE Codigo_Pais = ?
+          LIMIT 500
+        `, [countryCode]),
+        databasePool.execute(`
+          SELECT Codigo_Puesto AS id, Nombre_Puesto AS name
+          FROM ${databases.people}.tblPuestos
+          LIMIT 1000
+        `),
+      ]);
+      return { branches, positions };
+    },
+
     async listUsers(countryCode, filters) {
       const databasePool = getPool();
       const conditions = ["p.CodigoPais = ?", "p.isActivo = 1"];
@@ -105,8 +143,8 @@ export function createCatalogRepository(pool) {
       addFilter(conditions, parameters, filters.branchId, "p.Codigo_Sucursal = ?");
       addFilter(conditions, parameters, filters.positionId, "p.Codigo_Puesto = ?");
       if (filters.search) {
-        conditions.push("(p.Nombre_Personas LIKE CONCAT('%', ?, '%') OR p.Correo_electronico LIKE CONCAT('%', ?, '%'))");
-        parameters.push(filters.search, filters.search);
+        conditions.push("p.Nombre_Personas LIKE CONCAT('%', ?, '%')");
+        parameters.push(filters.search);
       }
       if (filters.onlyAllowed) conditions.push("p.isGenteCargo = 1");
       const where = `WHERE ${conditions.join(" AND ")}`;
@@ -115,12 +153,6 @@ export function createCatalogRepository(pool) {
         INNER JOIN ${databases.people}.tblPuestos j
           ON j.Codigo_Puesto = p.Codigo_Puesto
       `;
-      const order = sortSql(filters.sortBy, filters.sortOrder, {
-        id: "p.Codigo_Personas",
-        name: "p.Nombre_Personas",
-        position: "j.Nombre_Puesto",
-        email: "p.Correo_electronico",
-      }, "name");
       return executePaged(databasePool, `
         SELECT p.Codigo_Personas AS id,
                TRIM(p.Nombre_Personas) AS name,
@@ -130,7 +162,7 @@ export function createCatalogRepository(pool) {
                p.Codigo_Puesto AS positionId,
                COALESCE(p.isGenteCargo, 0) AS accessAllowed
         ${from} ${where}
-        ORDER BY ${order}
+        ORDER BY p.Nombre_Personas ASC
         ${paginationSql(filters.page, filters.pageSize)}
       `, `SELECT COUNT(*) AS total ${from} ${where}`, parameters, filters);
     },
@@ -164,21 +196,22 @@ export function createCatalogRepository(pool) {
         conditions.push("p.RTN LIKE CONCAT('%', ?, '%')");
         parameters.push(filters.taxNumber);
       }
-      if (filters.onlyExternal) conditions.push("COALESCE(p.isInterno, 0) = 0");
-      if (filters.onlyActive) conditions.push("COALESCE(p.isactive, 0) = 1");
+      if (filters.onlyExternal) conditions.push("p.isInterno = 0");
+      if (!filters.onlyActive) conditions.push("p.isactive = 0");
       const where = `WHERE ${conditions.join(" AND ")}`;
       const from = `
         FROM ${databases.providers}.tblProveedores p
         LEFT JOIN ${databases.people}.tblSucursales s
           ON s.Codigo_Sucursal = p.codigoInternoSAF
       `;
-      const order = sortSql(filters.sortBy, filters.sortOrder, {
-        commercialName: "p.Nombre_comercial",
-        legalName: "p.Nombre_legal",
-        taxNumber: "p.RTN",
-        type: "p.isInterno",
-        active: "p.isactive",
-      }, "commercialName");
+      const order = filters.sortBy
+        ? `ORDER BY ${sortSql(filters.sortBy, filters.sortOrder, {
+          commercialName: "p.Nombre_comercial",
+          legalName: "p.Nombre_legal",
+          taxNumber: "p.RTN",
+          active: "p.isactive",
+        }, filters.sortBy)}`
+        : "";
       return executePaged(databasePool, `
         SELECT p.cod_Proveedor AS id,
                p.Nombre_comercial AS commercialName,
@@ -191,9 +224,20 @@ export function createCatalogRepository(pool) {
                p.codigoInternoSAF AS destinationId,
                CONCAT(s.Codigo_InternoSucursal, ' - ', s.Nombre_Sucursal) AS destinationName
         ${from} ${where}
-        ORDER BY ${order}
+        ${order}
         ${paginationSql(filters.page, filters.pageSize)}
       `, `SELECT COUNT(*) AS total ${from} ${where}`, parameters, filters);
+    },
+
+    async listProviderBranches(countryCode) {
+      const [rows] = await getPool().execute(`
+        SELECT Codigo_Sucursal AS id,
+               CONCAT(Codigo_InternoSucursal, ' - ', Nombre_Sucursal) AS name
+        FROM ${databases.people}.tblSucursales
+        WHERE Codigo_Pais = ? AND isActivo = 1
+        LIMIT 50
+      `, [countryCode]);
+      return rows;
     },
 
     async listProviderDestinations(countryCode, providerId) {
@@ -288,27 +332,12 @@ export function createCatalogRepository(pool) {
       const databasePool = getPool();
       const conditions = ["c.codigoPais = ?"];
       const parameters = [countryCode];
-      addFilter(conditions, parameters, filters.categoryId, "sc.codigoCategoria = ?");
-      if (filters.search) {
-        conditions.push("sc.NombreSubcategoria LIKE CONCAT('%', ?, '%')");
-        parameters.push(filters.search);
-      }
-      if (filters.onlyRequired) conditions.push("sc.isObligatorio = 1");
-      if (filters.onlyDocuments) conditions.push("sc.isDocSucursal = 1");
-      if (filters.onlyActive) conditions.push("sc.isActive = 1");
       const where = `WHERE ${conditions.join(" AND ")}`;
       const from = `
         FROM ${databases.documents}.tblCategoriaDocumentos c
         INNER JOIN ${databases.documents}.tblSubcategoriaDocumentos sc
           ON sc.codigoCategoria = c.codigoCategoria
       `;
-      const order = sortSql(filters.sortBy, filters.sortOrder, {
-        category: "c.nombreCategoria",
-        subcategory: "sc.NombreSubcategoria",
-        required: "sc.isObligatorio",
-        document: "sc.isDocSucursal",
-        active: "sc.isActive",
-      }, "category");
       return executePaged(databasePool, `
         SELECT sc.codigoSubcategoria AS id,
                c.codigoCategoria AS categoryId,
@@ -318,7 +347,6 @@ export function createCatalogRepository(pool) {
                COALESCE(sc.isDocSucursal, 0) AS branchDocument,
                COALESCE(sc.isActive, 0) AS accessAllowed
         ${from} ${where}
-        ORDER BY ${order}, sc.NombreSubcategoria
         ${paginationSql(filters.page, filters.pageSize)}
       `, `SELECT COUNT(*) AS total ${from} ${where}`, parameters, filters);
     },
@@ -326,10 +354,10 @@ export function createCatalogRepository(pool) {
     async setCategoryAccess({ countryCode, categoryId, actorId, allowed, description, timestamp }) {
       return withTransaction(getPool(), async (connection) => {
         const [result] = await connection.execute(`
-          UPDATE ${databases.documents}.tblSubcategoriaDocumentos
-          SET isActive = ?
-          WHERE codigoSubcategoria = ? AND codigoPais = ?
-        `, [allowed ? 1 : 0, categoryId, countryCode]);
+          UPDATE ${databases.people}.tblPersonas
+          SET isGenteCargo = ?
+          WHERE Codigo_Personas = ?
+        `, [allowed ? 1 : 0, categoryId]);
         if (result.affectedRows === 0) return false;
         await connection.execute(`
           INSERT INTO ${databases.documents}.tblBitacoraPermisos
@@ -340,10 +368,30 @@ export function createCatalogRepository(pool) {
       });
     },
 
-    async listEntities(countryCode, filters) {
+    async getGovernmentEntityLookups() {
       const databasePool = getPool();
-      const conditions = ["e.isActive = 1", "e.codigoPais = ?"];
-      const parameters = [countryCode];
+      const [[entities], [responsibles]] = await Promise.all([
+        databasePool.execute(`
+          SELECT codigoEnte AS id, nombreEnte AS name
+          FROM ${databases.documents}.tblEntesGubernamentales
+          LIMIT 50
+        `),
+        databasePool.execute(`
+          SELECT p.Codigo_Personas AS id,
+                 TRIM(p.Nombre_Personas) AS name
+          FROM ${databases.documents}.tblEntesGubernamentales e
+          LEFT JOIN ${databases.people}.tblPersonas p
+            ON e.codigoResponsable = p.Codigo_Personas
+          LIMIT 50
+        `),
+      ]);
+      return { entities, responsibles };
+    },
+
+    async listEntities(filters) {
+      const databasePool = getPool();
+      const conditions = ["e.isActive = 1"];
+      const parameters = [];
       addFilter(conditions, parameters, filters.entityId, "e.codigoEnte = ?");
       addFilter(conditions, parameters, filters.responsibleId, "e.codigoResponsable = ?");
       if (filters.area === "legal") conditions.push("e.isLegal = 1");
@@ -352,15 +400,10 @@ export function createCatalogRepository(pool) {
       const from = `
         FROM ${databases.documents}.tblEntesGubernamentales e
         LEFT JOIN ${databases.people}.tblPersonas p
-          ON p.Codigo_Personas = e.codigoResponsable AND p.CodigoPais = e.codigoPais
+          ON e.codigoResponsable = p.Codigo_Personas
       `;
-      const order = sortSql(filters.sortBy, filters.sortOrder, {
-        name: "e.nombreEnte",
-        description: "e.descripcion",
-        responsible: "p.Nombre_Personas",
-        area: "e.isLegal",
-      }, "name");
-      return executePaged(databasePool, `
+      const [[items], [countRows]] = await Promise.all([
+        databasePool.execute(`
         SELECT e.codigoEnte AS id,
                e.nombreEnte AS name,
                e.descripcion AS description,
@@ -369,9 +412,21 @@ export function createCatalogRepository(pool) {
                COALESCE(e.isLegal, 0) AS legal,
                COALESCE(e.isRegulatorio, 0) AS regulatory
         ${from} ${where}
-        ORDER BY ${order}
-        ${paginationSql(filters.page, filters.pageSize)}
-      `, `SELECT COUNT(*) AS total ${from} ${where}`, parameters, filters);
+        LIMIT 50 OFFSET 0
+        `, parameters),
+        // The Pagination total is wired to the unfiltered master Aggregate,
+        // including inactive rows and every country.
+        databasePool.execute(`
+          SELECT COUNT(*) AS total
+          FROM ${databases.documents}.tblEntesGubernamentales
+        `),
+      ]);
+      return {
+        items,
+        total: Number(countRows[0]?.total || 0),
+        page: filters.page,
+        pageSize: 500,
+      };
     },
 
     async createEntity(countryCode, actorId, entity) {
@@ -383,65 +438,62 @@ export function createCatalogRepository(pool) {
       return Number(result.insertId);
     },
 
-    async isActivePersonInCountry(countryCode, personId) {
-      const [rows] = await getPool().execute(`
-        SELECT Codigo_Personas AS id
-        FROM ${databases.people}.tblPersonas
-        WHERE Codigo_Personas = ? AND CodigoPais = ? AND isActivo = 1
-        LIMIT 1
-      `, [personId, countryCode]);
-      return rows.length === 1;
-    },
-
-    async updateEntity(countryCode, entityId, entity) {
+    async updateEntity(entityId, entity) {
       const [result] = await getPool().execute(`
         UPDATE ${databases.documents}.tblEntesGubernamentales
         SET nombreEnte = ?, descripcion = ?, isRegulatorio = ?, isLegal = ?, codigoResponsable = ?
-        WHERE codigoEnte = ? AND codigoPais = ? AND isActive = 1
-      `, [entity.name, entity.description, entity.regulatory ? 1 : 0, entity.legal ? 1 : 0, entity.responsibleId, entityId, countryCode]);
+        WHERE codigoEnte = ?
+      `, [entity.name, entity.description, entity.regulatory ? 1 : 0, entity.legal ? 1 : 0, entity.responsibleId, entityId]);
       return result.affectedRows > 0;
     },
 
-    async deactivateEntity(countryCode, entityId) {
+    async deactivateEntity(entityId) {
       const [result] = await getPool().execute(`
         UPDATE ${databases.documents}.tblEntesGubernamentales
         SET isActive = 0
-        WHERE codigoEnte = ? AND codigoPais = ? AND isActive = 1
-      `, [entityId, countryCode]);
+        WHERE codigoEnte = ?
+      `, [entityId]);
       return result.affectedRows > 0;
     },
 
     async listLegalActions(filters) {
       const databasePool = getPool();
-      const conditions = [];
       const parameters = [];
-      if (filters.search) {
-        conditions.push("a.NombreAccion LIKE CONCAT('%', ?, '%')");
-        parameters.push(filters.search);
-      }
-      if (filters.onlyActive) conditions.push("a.IsActivo = 1");
-      const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
       const from = `
         FROM ${databases.documents}.tblAcciones_Legal a
         LEFT JOIN ${databases.people}.tblPersonas p
           ON p.Codigo_Personas = CAST(a.UsuarioCreado AS UNSIGNED)
       `;
-      const order = sortSql(filters.sortBy, filters.sortOrder, {
+      const sortColumns = {
         name: "a.NombreAccion",
         createdAt: "a.FechaCreado",
-        createdBy: "p.Nombre_Personas",
-        active: "a.IsActivo",
-      }, "name");
+        createdBy: "a.UsuarioCreado",
+      };
+      const order = filters.sortBy
+        ? `ORDER BY ${sortColumns[filters.sortBy]} ${filters.sortOrder === "desc" ? "DESC" : "ASC"}`
+        : "";
       return executePaged(databasePool, `
         SELECT a.codAccion AS id,
-               TRIM(a.NombreAccion) AS name,
-               a.FechaCreado AS createdAt,
-               COALESCE(NULLIF(TRIM(p.Nombre_Personas), ''), a.UsuarioCreado) AS createdBy,
+               a.NombreAccion AS name,
+               DATE_FORMAT(a.FechaCreado, '%Y-%m-%d %H:%i:%s') AS createdAt,
+               TRIM(p.Nombre_Personas) AS createdBy,
                COALESCE(a.IsActivo, 0) AS active
-        ${from} ${where}
-        ORDER BY ${order}
+        ${from}
+        ${order}
         ${paginationSql(filters.page, filters.pageSize)}
-      `, `SELECT COUNT(*) AS total ${from} ${where}`, parameters, filters);
+      `, `SELECT COUNT(*) AS total ${from}`, parameters, filters);
+    },
+
+    async getLegalAction(actionId) {
+      const [rows] = await getPool().execute(`
+        SELECT codAccion AS id,
+               NombreAccion AS name,
+               COALESCE(IsActivo, 0) AS active
+        FROM ${databases.documents}.tblAcciones_Legal
+        WHERE codAccion = ?
+        LIMIT 50
+      `, [actionId]);
+      return rows[0] || null;
     },
 
     async createLegalAction(actorId, timestamp, action) {

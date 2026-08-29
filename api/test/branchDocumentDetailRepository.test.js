@@ -68,3 +68,37 @@ test("detalle de sucursal conserva fuentes, orden y multimedia del OML", async (
   assert.deepEqual(documentQuery.parameters, [4, 226]);
   assert.doesNotMatch(documentQuery.sql, /ORDER BY c\.nombreCategoria/);
 });
+
+test("Refresh GetLibros conserva las dos fuentes funcionales legacy, la guarda de país y MaxRecords 500", async () => {
+  const calls = [];
+  const repository = createDocumentRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      return [[{
+        assignmentId: 137,
+        bookId: 2,
+        name: "Libro de Psicotrópicos",
+        isRequired: 1,
+      }], []];
+    },
+  });
+
+  const books = await repository.getBranchBooks(4, 226);
+
+  assert.deepEqual(books, [{
+    assignmentId: 137,
+    bookId: 2,
+    name: "Libro de Psicotrópicos",
+    isRequired: true,
+  }]);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].parameters, [4, 226]);
+  assert.match(calls[0].sql, /tblLibrosSucursales book/);
+  assert.match(calls[0].sql, /tblLibroxSucursal assignment/);
+  assert.match(calls[0].sql, /tblSucursales branch/);
+  assert.match(calls[0].sql, /branch\.Codigo_Pais = \?/);
+  assert.match(calls[0].sql, /assignment\.codigoLibro = book\.codigoLibro/);
+  assert.match(calls[0].sql, /LIMIT 500/);
+  assert.doesNotMatch(calls[0].sql, /ORDER BY/);
+  assert.doesNotMatch(calls[0].sql, /book\.isActive/);
+});

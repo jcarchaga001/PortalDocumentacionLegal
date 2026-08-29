@@ -157,7 +157,7 @@ test("responsables de incidente unen personas de sucursal y autorizados por tipo
   const responsibleCall = calls.find(({ sql }) => /UNION/.test(sql) && /ua\.codigoTipoIncidente = \?/.test(sql));
   assert.ok(responsibleCall);
   assert.match(responsibleCall.sql, /p\.Codigo_Sucursal = \?/);
-  assert.deepEqual(responsibleCall.parameters, [4, 312, 8, 4, 4]);
+  assert.deepEqual(responsibleCall.parameters, [4, 312, 8, 4]);
 });
 
 test("no persiste una accion con responsable fuera de sucursal y tipo", async () => {
@@ -197,16 +197,13 @@ test("no persiste una accion con responsable fuera de sucursal y tipo", async ()
   assert.equal(events.some((event) => typeof event === "string" && /INSERT INTO .*tblAccionesIncidentes/.test(event)), false);
 });
 
-test("consulta incidentes reales por pais, tipo y limites enteros", async () => {
+test("listas de incidentes replican filtros, orden y KPI de la pagina del OML", async () => {
   const calls = [];
   const repository = createIncidentRepository({
     async execute(sql, parameters) {
       calls.push({ sql, parameters });
       if (/COUNT\(\*\)/.test(sql)) return [[{ total: 7 }], []];
-      if (/SUM\(i\.Cod_EstadoIncidente/.test(sql)) {
-        return [[{ open: 2, inProgress: 1, paused: 1, closed: 3 }], []];
-      }
-      return [[{ id: 318 }], []];
+      return [[{ id: 318, statusId: 1 }, { id: 319, statusId: 5 }], []];
     },
   });
 
@@ -214,6 +211,7 @@ test("consulta incidentes reales por pais, tipo y limites enteros", async () => 
     page: 2,
     pageSize: 100,
     branchId: 312,
+    motiveId: 9,
   }));
 
   const listCall = calls.find(({ sql }) => /LIMIT 100 OFFSET 100/.test(sql));
@@ -224,9 +222,13 @@ test("consulta incidentes reales por pais, tipo y limites enteros", async () => 
   assert.match(listCall.sql, /branchRegistrationDate/);
   assert.match(listCall.sql, /incidentCategory/);
   assert.match(listCall.sql, /createdById/);
-  assert.deepEqual(listCall.parameters, [4, 1, 312]);
+  assert.deepEqual(listCall.parameters, [4, 312]);
+  assert.doesNotMatch(listCall.sql, /i\.isExterno/);
+  assert.doesNotMatch(listCall.sql, /i\.Cod_MotivoIncidente = \?/);
+  assert.match(listCall.sql, /ORDER BY i\.FechaApertura ASC/);
+  assert.equal(calls.some(({ sql }) => /SUM\(i\.Cod_EstadoIncidente/.test(sql)), false);
   assert.equal(result.total, 7);
-  assert.deepEqual(result.metrics, { open: 2, inProgress: 1, paused: 1, closed: 3 });
+  assert.deepEqual(result.metrics, { open: 1, inProgress: 0, paused: 0, closed: 1 });
 });
 
 test("mis acciones laborales respeta el usuario autenticado y el administrador legacy", async () => {

@@ -18,10 +18,26 @@ export function createAgreementController(agreementService) {
         next(error);
       }
     },
+    async clients(req, res, next) {
+      try {
+        const data = await agreementService.clients(req.auth.countryCode);
+        res.json(normalizedSuccess("Clientes de convenios consultados correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
     async get(req, res, next) {
       try {
         const data = await agreementService.get(req.auth.countryCode, req.params.id);
         res.json(normalizedSuccess("Convenio consultado correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+    async contacts(req, res, next) {
+      try {
+        const data = await agreementService.contacts(req.auth.countryCode, req.params.id);
+        res.json(normalizedSuccess("Contactos del convenio consultados correctamente.", data));
       } catch (error) {
         next(error);
       }

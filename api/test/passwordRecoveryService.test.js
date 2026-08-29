@@ -101,7 +101,7 @@ test("recuperacion por usuario rechaza un alias que no pertenece a la cuenta", a
 
   await assert.rejects(
     service.request({ type: "usuario", countryCode: 4, identifier: "usuario.legacy", deliveryAlias: "otra.persona" }),
-    { code: "RECOVERY_IDENTITY_NOT_FOUND" },
+    { code: "RECOVERY_IDENTITY_NOT_FOUND", message: "Credenciales Incorrectas" },
   );
   assert.equal(mailed, false);
   assert.equal(updated, false);

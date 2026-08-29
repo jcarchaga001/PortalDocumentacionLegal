@@ -8,6 +8,10 @@ export function getPermissionUsers(query) {
   return portalApiRequest({ path: "/catalogs/users", query });
 }
 
+export function getPermissionUserLookups() {
+  return portalApiRequest({ path: "/catalogs/users/lookups" });
+}
+
 export function updatePermissionUser(id, allowed) {
   return portalApiRequest({
     path: `/catalogs/users/${id}/access`,
@@ -18,6 +22,10 @@ export function updatePermissionUser(id, allowed) {
 
 export function getProviders(query) {
   return portalApiRequest({ path: "/catalogs/providers", query });
+}
+
+export function getProviderBranches() {
+  return portalApiRequest({ path: "/catalogs/providers/branches" });
 }
 
 export function getProviderDestinations(providerId) {
@@ -36,6 +44,10 @@ export function getDocumentCategories(query) {
   return portalApiRequest({ path: "/catalogs/document-categories", query });
 }
 
+export function getDocumentCategoryLookups() {
+  return portalApiRequest({ path: "/catalogs/document-categories/lookups" });
+}
+
 export function updateDocumentCategoryAccess(id, allowed) {
   return portalApiRequest({
     path: `/catalogs/document-categories/${id}/access`,
@@ -46,6 +58,10 @@ export function updateDocumentCategoryAccess(id, allowed) {
 
 export function getGovernmentEntities(query) {
   return portalApiRequest({ path: "/catalogs/government-entities", query });
+}
+
+export function getGovernmentEntityLookups() {
+  return portalApiRequest({ path: "/catalogs/government-entities/lookups" });
 }
 
 export function createGovernmentEntity(payload) {
@@ -62,6 +78,10 @@ export function deactivateGovernmentEntity(id) {
 
 export function getLegalActions(query) {
   return portalApiRequest({ path: "/catalogs/legal-actions", query });
+}
+
+export function getLegalAction(id) {
+  return portalApiRequest({ path: `/catalogs/legal-actions/${id}` });
 }
 
 export function createLegalAction(payload) {

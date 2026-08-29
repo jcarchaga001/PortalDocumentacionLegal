@@ -8,8 +8,16 @@ export function getAgreementCatalogs() {
   return portalApiRequest({ path: "/agreements/catalogs" });
 }
 
+export function getAgreementClients() {
+  return portalApiRequest({ path: "/agreements/clients" });
+}
+
 export function getAgreement(id) {
   return portalApiRequest({ path: `/agreements/${id}` });
+}
+
+export function getAgreementContacts(id) {
+  return portalApiRequest({ path: `/agreements/${id}/contacts` });
 }
 
 export function createAgreement(payload) {

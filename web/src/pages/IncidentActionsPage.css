@@ -1,8 +1,193 @@
 .legacy-action-reference {
   height: auto;
   padding: 0;
+  color: #272b30;
+  font-size: 14px;
+}
+
+.legacy-action-page {
+  position: relative;
+  width: min(1500px, 100%);
+  min-height: calc(100vh - 112px);
+  margin: 0 auto;
+}
+
+.legacy-action-page .legacy-incident-back {
+  width: 100%;
+  height: 21px;
+  margin: 0 0 16px;
+  gap: 16px;
   color: #4d5c66;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 21px;
+  text-align: left;
+}
+
+.legacy-action-page .legacy-incident-back .fa {
+  width: 16px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.legacy-action-page .legacy-incident-title-row {
+  min-height: 40px;
+  margin: 0 0 48px;
+}
+
+.legacy-action-page .legacy-incident-title-row h1 {
+  width: 600px;
+  max-width: 100%;
+  color: #272b30;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+}
+
+.legacy-action-page .legacy-incident-filters.has-six {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  width: 100%;
+  gap: 0 16px;
+  margin-bottom: 20px;
+}
+
+.legacy-action-page .legacy-incident-filters .ant-form-item {
+  margin-bottom: 0;
+}
+
+.legacy-action-page .legacy-incident-filters .ant-form-item-label {
+  height: 24px;
+  padding: 0 0 3px;
+}
+
+.legacy-action-page .legacy-incident-filters .ant-form-item-label > label {
+  height: 21px;
+  color: #272b30;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-action-page .legacy-incident-filters .ant-select,
+.legacy-action-page .legacy-incident-filters .ant-select-selector,
+.legacy-action-page .legacy-incident-filters .ant-input {
+  height: 40px !important;
+  min-height: 40px;
+  border-color: #ced4da;
+  border-radius: 4px !important;
+  background: #fff;
+  box-shadow: none !important;
+}
+
+.legacy-action-page .legacy-incident-filters .ant-select-selector,
+.legacy-action-page .legacy-incident-filters .ant-input {
+  padding: 0 16px !important;
+}
+
+.legacy-action-page .legacy-incident-filters .ant-select-selection-item,
+.legacy-action-page .legacy-incident-filters .ant-select-selection-placeholder {
+  color: #272b30;
+  font-size: 14px;
+  line-height: 38px !important;
+}
+
+.legacy-action-page .legacy-incident-table .ant-table {
+  overflow: hidden;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.legacy-action-page .legacy-incident-table .ant-table-container {
+  border-radius: 4px !important;
+}
+
+.legacy-action-page .legacy-incident-table .ant-table-content {
+  overflow: hidden !important;
+}
+
+.legacy-action-page .legacy-incident-table table {
+  width: 100% !important;
+  min-width: 100% !important;
+}
+
+.legacy-action-page .legacy-incident-table .ant-table-thead > tr > th {
+  box-sizing: border-box;
+  height: 48px;
+  padding: 0 18px;
+  color: #fff;
+  background: #222;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 21px;
+}
+
+.legacy-action-page .legacy-incident-table .ant-table-tbody > tr > td {
+  box-sizing: border-box;
+  height: 100px;
+  padding: 16px 18px;
+  color: #272b30;
+  background: #fff;
+  font-size: 14px;
+  line-height: 21px;
+  white-space: normal;
+}
+
+.legacy-action-page .legacy-incident-table .ant-table-placeholder {
+  display: none;
+}
+
+.legacy-action-page .legacy-action-menu-trigger {
+  width: 40px;
+  height: 40px;
+  color: #272b30;
+}
+
+.legacy-action-page .legacy-action-menu-trigger .fa {
+  font-size: 14px;
+}
+
+.legacy-action-page .legacy-action-footer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 21px;
+  color: #272b30;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-action-overflow-menu .ant-dropdown-menu {
+  min-width: 230px;
+  padding: 0 0 8px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 4px 6px rgb(0 0 0 / 10%);
+}
+
+.legacy-action-overflow-menu .ant-dropdown-menu-item-group-title {
+  padding: 16px 16px 8px;
+  color: #6f767c;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  text-transform: uppercase;
+}
+
+.legacy-action-overflow-menu .ant-dropdown-menu-item {
+  min-height: 40px;
+  padding: 8px 16px !important;
+  border-radius: 0;
+  color: #272b30;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-action-overflow-menu .ant-dropdown-menu-item-icon {
+  width: 16px;
+  min-width: 16px;
+  font-size: 14px;
+  text-align: center;
 }
 
 .legacy-action-detail-drawer .ant-drawer-body {

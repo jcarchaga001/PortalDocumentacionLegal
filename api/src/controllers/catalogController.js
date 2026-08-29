@@ -20,6 +20,15 @@ export function createCatalogController(catalogService) {
       }
     },
 
+    async userPermissionLookups(req, res, next) {
+      try {
+        const data = await catalogService.userPermissionLookups(req.auth.countryCode);
+        res.json(normalizedSuccess("Catálogos de permisos consultados correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+
     async setUserAccess(req, res, next) {
       try {
         const data = await catalogService.setUserAccess(req.auth, req.params.id, req.body);
@@ -33,6 +42,15 @@ export function createCatalogController(catalogService) {
       try {
         const data = await catalogService.listProviders(req.auth.countryCode, req.query);
         res.json(normalizedSuccess("Proveedores consultados correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+
+    async listProviderBranches(req, res, next) {
+      try {
+        const data = await catalogService.listProviderBranches(req.auth.countryCode);
+        res.json(normalizedSuccess("Sucursales de proveedor consultadas correctamente.", data));
       } catch (error) {
         next(error);
       }
@@ -74,6 +92,15 @@ export function createCatalogController(catalogService) {
       }
     },
 
+    async documentCategoryLookups(req, res, next) {
+      try {
+        const data = await catalogService.documentCategoryLookups(req.auth.countryCode);
+        res.json(normalizedSuccess("Catálogos de categorías documentales consultados correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+
     async setCategoryAccess(req, res, next) {
       try {
         const data = await catalogService.setCategoryAccess(req.auth, req.params.id, req.body);
@@ -87,6 +114,15 @@ export function createCatalogController(catalogService) {
       try {
         const data = await catalogService.listEntities(req.auth.countryCode, req.query);
         res.json(normalizedSuccess("Entes gubernamentales consultados correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+
+    async entityLookups(_req, res, next) {
+      try {
+        const data = await catalogService.entityLookups();
+        res.json(normalizedSuccess("Catálogos de entes gubernamentales consultados correctamente.", data));
       } catch (error) {
         next(error);
       }
@@ -123,6 +159,15 @@ export function createCatalogController(catalogService) {
       try {
         const data = await catalogService.listLegalActions(req.query);
         res.json(normalizedSuccess("Acciones legales consultadas correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+
+    async getLegalAction(req, res, next) {
+      try {
+        const data = await catalogService.getLegalAction(req.params.id);
+        res.json(normalizedSuccess("Acción legal consultada correctamente.", data));
       } catch (error) {
         next(error);
       }

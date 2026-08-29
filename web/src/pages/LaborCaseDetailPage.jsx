@@ -6,6 +6,7 @@ import {
   HistoryOutlined,
   MoreOutlined,
   PlusOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
@@ -25,6 +26,10 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import { useAuth } from "../config/AuthContext.jsx";
+import {
+  validateLegacyIncidentCommentFileName,
+  validateLegacyIncidentFileName,
+} from "../config/legacyFileContracts.js";
 import { downloadBlob } from "../services/fileHelpers.js";
 import { uploadIncidentFile } from "../services/incidentFileService.js";
 import {
@@ -37,7 +42,7 @@ import {
 } from "../services/incidentService.js";
 import { downloadS3File } from "../services/tdS3Service.js";
 import { options, StatusTag } from "./IncidentUi.jsx";
-import { getLaborCaseSurface } from "./laborCaseSurface.js";
+import { LABOR_CASE_SURFACES } from "./laborCaseSurface.js";
 
 function requestFromSearch(search) {
   const query = new URLSearchParams(search);
@@ -65,11 +70,10 @@ function CaseField({ label, value, onEdit }) {
   );
 }
 
-export function LaborCaseDetailPage({ legacy = false }) {
+export function LaborCaseDetailView({ surface }) {
   const history = useHistory();
   const location = useLocation();
   const { user } = useAuth();
-  const surface = getLaborCaseSurface(legacy);
   const request = useMemo(() => requestFromSearch(location.search), [location.search]);
   const [data, setData] = useState(null);
   const [catalogs, setCatalogs] = useState({
@@ -89,9 +93,12 @@ export function LaborCaseDetailPage({ legacy = false }) {
   const [actionOperation, setActionOperation] = useState(null);
   const [selectedAction, setSelectedAction] = useState(null);
   const [historyAction, setHistoryAction] = useState(null);
+  const [expandedHistoryActionId, setExpandedHistoryActionId] = useState(null);
   const [newActionFile, setNewActionFile] = useState(null);
   const [actionFile, setActionFile] = useState(null);
   const [caseFile, setCaseFile] = useState(null);
+  const [commentFile, setCommentFile] = useState(null);
+  const [commentSaving, setCommentSaving] = useState(false);
   const [newActionForm] = Form.useForm();
   const [caseForm] = Form.useForm();
   const [actionForm] = Form.useForm();
@@ -123,6 +130,27 @@ export function LaborCaseDetailPage({ legacy = false }) {
   }, [request.actionId, request.caseId, surface.catalogScope]);
 
   useEffect(() => { load(); }, [load]);
+
+  function acceptEvidenceFile(file, { legal = false, setFile, form } = {}) {
+    const validation = validateLegacyIncidentFileName(file?.name, { legal });
+    if (!validation.valid) {
+      message.error(validation.message);
+      return Upload.LIST_IGNORE;
+    }
+    setFile(file);
+    form.setFields([{ name: "evidence", errors: [] }]);
+    return false;
+  }
+
+  function acceptCommentAttachment(file) {
+    const validation = validateLegacyIncidentCommentFileName(file?.name, { legal: true });
+    if (!validation.valid) {
+      message.error(validation.message);
+      return Upload.LIST_IGNORE;
+    }
+    setCommentFile(file);
+    return false;
+  }
 
   async function downloadEvidence(s3Key, fileName) {
     if (!s3Key) return;
@@ -244,45 +272,94 @@ export function LaborCaseDetailPage({ legacy = false }) {
   async function saveComment() {
     try {
       const values = await commentForm.validateFields();
-      const result = await addLaborComment(request.caseId, values);
+      setCommentSaving(true);
+      let attachment = {};
+      if (commentFile) {
+        const upload = await uploadIncidentFile(commentFile, {
+          caseId: String(request.caseId),
+          purpose: "labor-comment",
+          surface: surface.sourceName,
+        });
+        if (!upload.success) return message.error(upload.message);
+        attachment = upload.data;
+      }
+      const result = await addLaborComment(request.caseId, {
+        ...values,
+        ...attachment,
+      });
       if (!result.success) return message.error(result.message);
       setData(result.data);
       commentForm.resetFields();
+      setCommentFile(null);
     } catch {
       // Ant Design conserva el mensaje de campo requerido.
+    } finally {
+      setCommentSaving(false);
     }
   }
 
+  const [nameWidth, descriptionWidth, responsibleWidth, closeDateWidth, statusWidth,
+    evidenceWidth, historyWidth, actionsWidth] = surface.actionColumnWidths;
   const actionColumns = [
-    { title: "Nombre Acción", dataIndex: "name", key: "name", width: 169 },
-    { title: "Descripción", dataIndex: "description", key: "description", width: 146 },
-    { title: "Responsable", dataIndex: "responsibleName", key: "responsibleName", width: 153 },
-    { title: "Fecha Cierre", dataIndex: "closeDate", key: "closeDate", width: 198, render: (value) => valueOrDash(value) },
+    { title: "Nombre Acción", dataIndex: "name", key: "name", width: nameWidth },
+    { title: "Descripción", dataIndex: "description", key: "description", width: descriptionWidth },
+    { title: "Responsable", dataIndex: "responsibleName", key: "responsibleName", width: responsibleWidth },
+    { title: "Fecha Cierre", dataIndex: "closeDate", key: "closeDate", width: closeDateWidth, render: (value) => valueOrDash(value) },
     {
       title: "Estado",
       dataIndex: "statusName",
       key: "statusName",
-      width: 168,
+      width: statusWidth,
       render: (name, row) => <StatusTag id={row.statusId} name={name} />,
     },
     {
       title: "Evidencia",
       key: "evidence",
-      width: 124,
-      render: (_, row) => row.s3Key ? (
-        <Button type="link" icon={<DownloadOutlined />} onClick={() => downloadEvidence(row.s3Key, row.fileName)}>Descargar</Button>
-      ) : <span>No adjuntada</span>,
+      width: evidenceWidth,
+      render: (_, row) => {
+        if (!row.s3Key) return surface.evidenceMode === "icon" ? null : <span>No adjuntada</span>;
+        if (surface.evidenceMode === "icon") {
+          return (
+            <button
+              type="button"
+              className="legacy-old-evidence-link"
+              title="Descargar Evidencia"
+              aria-label="Descargar Evidencia"
+              onClick={() => downloadEvidence(row.s3Key, row.fileName)}
+            >
+              <i className="fa fa-file-image-o" aria-hidden="true" />
+            </button>
+          );
+        }
+        return <Button type="link" icon={<DownloadOutlined />} onClick={() => downloadEvidence(row.s3Key, row.fileName)}>Descargar</Button>;
+      },
     },
     {
       title: "Histórico",
       key: "history",
-      width: 144,
-      render: (_, row) => <Button type="link" icon={<HistoryOutlined />} onClick={() => setHistoryAction(row)}>Histórico</Button>,
+      width: historyWidth,
+      render: (_, row) => surface.actionHistoryMode === "inline" ? (
+        <button
+          type="button"
+          className="legacy-old-history-link"
+          title="Histórico"
+          aria-label="Histórico"
+          aria-expanded={Number(expandedHistoryActionId) === Number(row.id)}
+          onClick={() => setExpandedHistoryActionId((current) => (
+            Number(current) === Number(row.id) ? null : row.id
+          ))}
+        >
+          <i
+            className={`fa ${Number(expandedHistoryActionId) === Number(row.id) ? "fa-chevron-up" : "fa-chevron-down"}`}
+            aria-hidden="true"
+          />
+        </button>
+      ) : <Button type="link" icon={<HistoryOutlined />} onClick={() => setHistoryAction(row)}>Histórico</Button>,
     },
     {
       title: "",
       key: "actions",
-      width: 80,
+      width: actionsWidth,
       render: (_, row) => {
         const ended = [3, 5].includes(Number(row.statusId));
         const canOwnerMutate = !ended && (
@@ -302,7 +379,11 @@ export function LaborCaseDetailPage({ legacy = false }) {
         ];
         return items.length ? (
           <Dropdown trigger={["click"]} menu={{ items, onClick: ({ key }) => openActionOperation(row, key) }}>
-            <Button type="text" icon={<MoreOutlined />} aria-label={`Opciones de ${row.name}`} />
+            <Button
+              type="text"
+              icon={surface.actionHistoryMode === "inline" ? <i className="fa fa-ellipsis-v" aria-hidden="true" /> : <MoreOutlined />}
+              aria-label={`Opciones de ${row.name}`}
+            />
           </Dropdown>
         ) : null;
       },
@@ -314,7 +395,10 @@ export function LaborCaseDetailPage({ legacy = false }) {
     : [];
 
   return (
-    <div className="legacy-incident-page legacy-incident-detail-page legacy-labor-detail-page">
+    <div
+      className={`legacy-incident-page legacy-incident-detail-page legacy-labor-detail-page ${surface.rootClassName}`}
+      data-labor-case-surface={surface.sourceName}
+    >
       <button type="button" className="legacy-incident-back" onClick={() => history.goBack()}>
         <ArrowLeftOutlined /> Regresar pantalla anterior...
       </button>
@@ -395,13 +479,38 @@ export function LaborCaseDetailPage({ legacy = false }) {
             columns={actionColumns}
             dataSource={data.actions || []}
             pagination={false}
+            expandable={surface.actionHistoryMode === "inline" ? {
+              expandIcon: () => null,
+              expandedRowKeys: expandedHistoryActionId ? [expandedHistoryActionId] : [],
+              expandedRowRender: (row) => {
+                const entries = (data.actionHistory || []).filter(
+                  (entry) => Number(entry.actionId) === Number(row.id),
+                );
+                return (
+                  <List
+                    className="legacy-old-action-history"
+                    dataSource={entries}
+                    locale={{ emptyText: "No hay movimientos registrados." }}
+                    renderItem={(item) => (
+                      <List.Item>
+                        <List.Item.Meta
+                          title={item.description}
+                          description={`${item.statusName || ""} · ${item.userName || "Usuario"} · ${item.registeredAt || ""}`}
+                        />
+                      </List.Item>
+                    )}
+                  />
+                );
+              },
+              showExpandColumn: false,
+            } : undefined}
           />
 
           <div className="legacy-incident-attachments">
             <h2>Documentos adjuntos</h2>
             <List
               dataSource={data.files || []}
-              locale={{ emptyText: "No hay documentos adjuntos." }}
+              locale={{ emptyText: surface.emptyAttachmentsText }}
               renderItem={(file) => (
                 <List.Item actions={[<Button key="download" type="text" icon={<DownloadOutlined />} onClick={() => downloadEvidence(file.s3Key, file.fileName)} />]}>
                   {file.fileName}
@@ -423,12 +532,36 @@ export function LaborCaseDetailPage({ legacy = false }) {
           <Form.Item name="comment" rules={[{ required: true, whitespace: true, message: "Ingrese un comentario." }]}>
             <Input.TextArea rows={3} placeholder="Agregar comentario" />
           </Form.Item>
-          <Button type="primary" onClick={saveComment}>+ Agregar</Button>
+          <Upload
+            beforeUpload={acceptCommentAttachment}
+            fileList={commentFile ? [commentFile] : []}
+            maxCount={1}
+            onRemove={() => setCommentFile(null)}
+            showUploadList={false}
+          >
+            <Button icon={<UploadOutlined />}>{commentFile?.name || "Adjunte Archivo"}</Button>
+          </Upload>
+          <Button type="primary" loading={commentSaving} onClick={saveComment}>+ Agregar</Button>
         </Form>
         <List
           dataSource={data?.comments || []}
           locale={{ emptyText: "No hay comentarios." }}
-          renderItem={(item) => <List.Item><List.Item.Meta title={item.userName || "Usuario"} description={item.registeredAt} /><p>{item.comment}</p></List.Item>}
+          renderItem={(item) => (
+            <List.Item
+              actions={item.s3Key ? [
+                <Button
+                  key="download-comment-attachment"
+                  type="text"
+                  icon={<DownloadOutlined />}
+                  aria-label="Descargar adjunto del comentario"
+                  onClick={() => downloadEvidence(item.s3Key, item.fileName)}
+                />,
+              ] : []}
+            >
+              <List.Item.Meta title={item.userName || "Usuario"} description={item.registeredAt} />
+              <p>{item.comment}</p>
+            </List.Item>
+          )}
         />
       </Drawer>
 
@@ -452,7 +585,11 @@ export function LaborCaseDetailPage({ legacy = false }) {
           <Form.Item name="includeEvidence" valuePropName="checked"><Checkbox>¿Adjuntar evidencia?</Checkbox></Form.Item>
           {includeEvidence && (
             <Form.Item name="evidence" label="Evidencia">
-              <Upload beforeUpload={() => false} maxCount={1} onChange={({ fileList }) => setNewActionFile(fileList[0]?.originFileObj || null)}>
+              <Upload
+                beforeUpload={(file) => acceptEvidenceFile(file, { setFile: setNewActionFile, form: newActionForm })}
+                maxCount={1}
+                onRemove={() => setNewActionFile(null)}
+              >
                 <Button>Adjuntar documento</Button>
               </Upload>
             </Form.Item>
@@ -476,7 +613,11 @@ export function LaborCaseDetailPage({ legacy = false }) {
           {["pending", "close"].includes(caseOperation) && <Form.Item name="justification" label="Justificación cambio estado*" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={4} /></Form.Item>}
           {caseOperation === "close" && (
             <Form.Item name="evidence" label={`Evidencia${data?.requiresEvidence ? "*" : ""}`}>
-              <Upload beforeUpload={() => false} maxCount={1} onChange={({ fileList }) => setCaseFile(fileList[0]?.originFileObj || null)}><Button>Adjuntar documento</Button></Upload>
+              <Upload
+                beforeUpload={(file) => acceptEvidenceFile(file, { setFile: setCaseFile, form: caseForm })}
+                maxCount={1}
+                onRemove={() => setCaseFile(null)}
+              ><Button>Adjuntar documento</Button></Upload>
             </Form.Item>
           )}
         </Form>
@@ -501,7 +642,15 @@ export function LaborCaseDetailPage({ legacy = false }) {
           )}
           {actionOperation === "close" && actionIncludeEvidence && (
             <Form.Item name="evidence" label="Evidencia">
-              <Upload beforeUpload={() => false} maxCount={1} onChange={({ fileList }) => setActionFile(fileList[0]?.originFileObj || null)}>
+              <Upload
+                beforeUpload={(file) => acceptEvidenceFile(file, {
+                  legal: true,
+                  setFile: setActionFile,
+                  form: actionForm,
+                })}
+                maxCount={1}
+                onRemove={() => setActionFile(null)}
+              >
                 <Button>Adjuntar documento</Button>
               </Upload>
             </Form.Item>
@@ -510,7 +659,7 @@ export function LaborCaseDetailPage({ legacy = false }) {
         </Form>
       </Modal>
 
-      <Modal title={`Histórico · ${historyAction?.name || "Acción"}`} open={Boolean(historyAction)} onCancel={() => setHistoryAction(null)} footer={null}>
+      <Modal title={`Histórico · ${historyAction?.name || "Acción"}`} open={surface.actionHistoryMode === "modal" && Boolean(historyAction)} onCancel={() => setHistoryAction(null)} footer={null}>
         <List
           dataSource={selectedHistory}
           locale={{ emptyText: "No hay movimientos registrados." }}
@@ -519,4 +668,8 @@ export function LaborCaseDetailPage({ legacy = false }) {
       </Modal>
     </div>
   );
+}
+
+export function LaborCaseDetailPage() {
+  return <LaborCaseDetailView surface={LABOR_CASE_SURFACES.current} />;
 }

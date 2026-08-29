@@ -37,11 +37,91 @@ test("usuarios se restringen por país, activos y parámetros seguros", async ()
   assert.match(listCall.sql, /p\.CodigoPais = \?/);
   assert.match(listCall.sql, /p\.isActivo = 1/);
   assert.match(listCall.sql, /p\.isGenteCargo = 1/);
+  assert.match(listCall.sql, /ORDER BY p\.Nombre_Personas ASC/);
   assert.match(listCall.sql, /LIMIT 50 OFFSET 100/);
-  assert.deepEqual(listCall.parameters, [4, 11, "Ana", "Ana"]);
+  assert.deepEqual(listCall.parameters, [4, 11, "Ana"]);
 });
 
-test("proveedores consulta nombres físicos con porcentajes escapados", async () => {
+test("lookups de permisos conservan GetSucursales/GetPuestos y sus MaxRecords", async () => {
+  const calls = [];
+  const repository = createCatalogRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      if (/tblSucursales/.test(sql)) return [[{ id: 11, name: "FA21 - Las Minitas" }], []];
+      return [[{ id: 7, name: "Administrador Regional" }], []];
+    },
+  });
+
+  const result = await repository.getUserPermissionLookups(4);
+
+  const branches = calls.find(({ sql }) => /tblSucursales/.test(sql));
+  const positions = calls.find(({ sql }) => /tblPuestos/.test(sql));
+  assert.match(branches.sql, /Codigo_Pais = \?/);
+  assert.doesNotMatch(branches.sql, /isActivo/);
+  assert.match(branches.sql, /LIMIT 500/);
+  assert.deepEqual(branches.parameters, [4]);
+  assert.match(positions.sql, /LIMIT 1000/);
+  assert.equal(positions.parameters, undefined);
+  assert.deepEqual(result, {
+    branches: [{ id: 11, name: "FA21 - Las Minitas" }],
+    positions: [{ id: 7, name: "Administrador Regional" }],
+  });
+});
+
+test("lookups de scrCategoriasDocumentos conservan sucursales aunque el label diga categoría", async () => {
+  const calls = [];
+  const repository = createCatalogRepository({
+    async execute(sql, parameters = []) {
+      calls.push({ sql, parameters });
+      return [[], []];
+    },
+  });
+
+  await repository.getDocumentCategoryLookups(4);
+
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].sql, /FROM .*tblSucursales/);
+  assert.match(calls[0].sql, /WHERE Codigo_Pais = \?/);
+  assert.match(calls[0].sql, /LIMIT 500/);
+  assert.doesNotMatch(calls[0].sql, /ORDER BY/);
+  assert.deepEqual(calls[0].parameters, [4]);
+  assert.match(calls[1].sql, /FROM .*tblPuestos/);
+  assert.match(calls[1].sql, /LIMIT 1000/);
+});
+
+test("permiso de usuario actualiza tblPersonas y audita tblBitacoraPermisos en transacción", async () => {
+  const calls = [];
+  const lifecycle = [];
+  const connection = {
+    async beginTransaction() { lifecycle.push("begin"); },
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      return [{ affectedRows: 1 }, []];
+    },
+    async commit() { lifecycle.push("commit"); },
+    async rollback() { lifecycle.push("rollback"); },
+    release() { lifecycle.push("release"); },
+  };
+  const repository = createCatalogRepository({ async getConnection() { return connection; } });
+
+  const result = await repository.setUserAccess({
+    countryCode: 4,
+    userId: 17,
+    actorId: 99,
+    allowed: false,
+    description: "Deshabilitó acceso",
+    timestamp: "2026-08-28 10:00:00",
+  });
+
+  assert.equal(result, true);
+  assert.match(calls[0].sql, /UPDATE .*tblPersonas/s);
+  assert.deepEqual(calls[0].parameters, [0, 17, 4]);
+  assert.match(calls[1].sql, /INSERT INTO .*tblBitacoraPermisos/s);
+  assert.deepEqual(calls[1].parameters, [17, 99, "Deshabilitó acceso", 4, "2026-08-28 10:00:00"]);
+  assert.deepEqual(lifecycle, ["begin", "commit", "release"]);
+});
+
+test("proveedores replica filtros booleanos, MaxRecords y ausencia de sort inicial del aggregate", async () => {
   const { calls, pool } = pagedPoolRecorder();
   const repository = createCatalogRepository(pool);
   await repository.listProviders(4, normalizeProviderFilters({
@@ -54,9 +134,36 @@ test("proveedores consulta nombres físicos con porcentajes escapados", async ()
   const listCall = calls.find(({ sql }) => /LIMIT/.test(sql));
   assert.match(listCall.sql, /p\.\`isRet1%\`/);
   assert.match(listCall.sql, /p\.\`is12\.5%\`/);
-  assert.match(listCall.sql, /COALESCE\(p\.isInterno, 0\) = 0/);
-  assert.match(listCall.sql, /COALESCE\(p\.isactive, 0\) = 1/);
+  assert.match(listCall.sql, /p\.isInterno = 0/);
+  assert.doesNotMatch(listCall.sql, /p\.isactive = 1/);
+  assert.doesNotMatch(listCall.sql, /ORDER BY/);
+  assert.match(listCall.sql, /LIMIT 500 OFFSET 0/);
   assert.deepEqual(listCall.parameters, [4, "Farmacia", "0801"]);
+});
+
+test("desmarcar Solo Activas conserva la condición legacy que devuelve inactivas", async () => {
+  const { calls, pool } = pagedPoolRecorder();
+  const repository = createCatalogRepository(pool);
+  await repository.listProviders(4, normalizeProviderFilters({ onlyActive: false }));
+
+  const listCall = calls.find(({ sql }) => /LIMIT/.test(sql));
+  assert.match(listCall.sql, /p\.isactive = 0/);
+});
+
+test("GetSucursal de proveedores limita a 50 sucursales activas del país", async () => {
+  const calls = [];
+  const repository = createCatalogRepository({
+    async execute(sql, parameters) {
+      calls.push({ sql, parameters });
+      return [[{ id: 7, name: "FA07 - La Kennedy" }], []];
+    },
+  });
+
+  const result = await repository.listProviderBranches(4);
+  assert.match(calls[0].sql, /Codigo_Pais = \? AND isActivo = 1/);
+  assert.match(calls[0].sql, /LIMIT 50/);
+  assert.deepEqual(calls[0].parameters, [4]);
+  assert.deepEqual(result, [{ id: 7, name: "FA07 - La Kennedy" }]);
 });
 
 test("destinos de proveedor replica GetDestino con banco, estado 5 y limite 500", async () => {
@@ -95,7 +202,7 @@ test("destinos de proveedor replica GetDestino con banco, estado 5 y limite 500"
   });
 });
 
-test("toggle de categoría modifica tblSubcategoriaDocumentos y escribe bitácora en transacción", async () => {
+test("toggle de categoría conserva el defecto OML: modifica tblPersonas por id de subcategoría", async () => {
   const calls = [];
   const lifecycle = [];
   const connection = {
@@ -119,14 +226,16 @@ test("toggle de categoría modifica tblSubcategoriaDocumentos y escribe bitácor
   });
 
   assert.equal(result, true);
-  assert.match(calls[0].sql, /UPDATE .*tblSubcategoriaDocumentos/);
-  assert.doesNotMatch(calls[0].sql, /tblPersonas/);
-  assert.deepEqual(calls[0].parameters, [1, 8, 4]);
+  assert.match(calls[0].sql, /UPDATE .*tblPersonas/s);
+  assert.doesNotMatch(calls[0].sql, /tblSubcategoriaDocumentos/);
+  assert.doesNotMatch(calls[0].sql, /CodigoPais/);
+  assert.deepEqual(calls[0].parameters, [1, 8]);
   assert.match(calls[1].sql, /tblBitacoraPermisos/);
+  assert.deepEqual(calls[1].parameters, [8, 99, "Habilitó Subcategoría", 4, "2026-08-06 10:00:00"]);
   assert.deepEqual(lifecycle, ["begin", "commit", "release"]);
 });
 
-test("filtros de categorías mantienen país y límites enteros", async () => {
+test("GetPersonas de categorías ignora filtros visibles, no ordena y usa MaxRecords 500", async () => {
   const { calls, pool } = pagedPoolRecorder();
   const repository = createCatalogRepository(pool);
   await repository.listCategories(4, normalizeCategoryFilters({
@@ -141,17 +250,21 @@ test("filtros de categorías mantienen país y límites enteros", async () => {
 
   const listCall = calls.find(({ sql }) => /LIMIT/.test(sql));
   assert.match(listCall.sql, /c\.codigoPais = \?/);
-  assert.match(listCall.sql, /sc\.isObligatorio = 1/);
-  assert.match(listCall.sql, /sc\.isDocSucursal = 1/);
-  assert.match(listCall.sql, /sc\.isActive = 1/);
-  assert.match(listCall.sql, /LIMIT 100 OFFSET 100/);
-  assert.deepEqual(listCall.parameters, [4, 3, "Licencia"]);
+  assert.match(listCall.sql, /ON sc\.codigoCategoria = c\.codigoCategoria/);
+  assert.doesNotMatch(listCall.sql, /sc\.codigoPais/);
+  assert.doesNotMatch(listCall.sql, /sc\.isObligatorio = 1/);
+  assert.doesNotMatch(listCall.sql, /sc\.isDocSucursal = 1/);
+  assert.doesNotMatch(listCall.sql, /sc\.isActive = 1/);
+  assert.doesNotMatch(listCall.sql, /ORDER BY/);
+  assert.match(listCall.sql, /LIMIT 500 OFFSET 500/);
+  assert.deepEqual(listCall.parameters, [4]);
 });
 
-test("entes gubernamentales se aislan por pais en lectura y escritura", async () => {
+test("entes replican joins, límites y ausencia de ámbito país del Aggregate legacy", async () => {
   const { calls, pool } = pagedPoolRecorder();
   const repository = createCatalogRepository(pool);
-  await repository.listEntities(4, normalizeEntityFilters({ responsibleId: 17 }));
+  await repository.getGovernmentEntityLookups();
+  await repository.listEntities(normalizeEntityFilters({ responsibleId: 17 }));
   await repository.createEntity(4, 3, {
     name: "SAR",
     description: "Autoridad",
@@ -159,26 +272,32 @@ test("entes gubernamentales se aislan por pais en lectura y escritura", async ()
     legal: false,
     responsibleId: 17,
   });
-  await repository.updateEntity(4, 9, {
+  await repository.updateEntity(9, {
     name: "SAR",
     description: "Autoridad",
     regulatory: true,
     legal: false,
     responsibleId: 17,
   });
-  await repository.deactivateEntity(4, 9);
+  await repository.deactivateEntity(9);
 
-  const listCall = calls.find(({ sql }) => /LIMIT/.test(sql));
-  assert.match(listCall.sql, /e\.codigoPais = \?/);
-  assert.match(listCall.sql, /p\.CodigoPais = e\.codigoPais/);
-  assert.deepEqual(listCall.parameters, [4, 17]);
+  const listCall = calls.find(({ sql }) => /SELECT e\.codigoEnte AS id/.test(sql) && /LIMIT 50 OFFSET 0/.test(sql));
+  assert.doesNotMatch(listCall.sql, /codigoPais/);
+  assert.match(listCall.sql, /ON e\.codigoResponsable = p\.Codigo_Personas/);
+  assert.doesNotMatch(listCall.sql, /ORDER BY/);
+  assert.deepEqual(listCall.parameters, [17]);
+  const masterCount = calls.find(({ sql }) => /COUNT\(\*\)/.test(sql) && /tblEntesGubernamentales/.test(sql));
+  assert.doesNotMatch(masterCount.sql, /WHERE/);
+  const responsibleLookup = calls.find(({ sql }) => /SELECT p\.Codigo_Personas AS id/.test(sql));
+  assert.match(responsibleLookup.sql, /LEFT JOIN/);
+  assert.doesNotMatch(responsibleLookup.sql, /DISTINCT|ORDER BY|isActivo|codigoPais/);
   const createCall = calls.find(({ sql }) => /INSERT INTO .*tblEntesGubernamentales/s.test(sql));
   assert.deepEqual(createCall.parameters, ["SAR", "Autoridad", 4, 1, 0, 3]);
   const updateCall = calls.find(({ sql }) => /UPDATE .*tblEntesGubernamentales/s.test(sql) && /nombreEnte/.test(sql));
-  assert.match(updateCall.sql, /codigoPais = \?/);
-  assert.equal(updateCall.parameters.at(-1), 4);
+  assert.doesNotMatch(updateCall.sql, /codigoPais|isActive/);
+  assert.equal(updateCall.parameters.at(-1), 9);
   const deleteCall = calls.find(({ sql }) => /SET isActive = 0/.test(sql));
-  assert.deepEqual(deleteCall.parameters, [9, 4]);
+  assert.deepEqual(deleteCall.parameters, [9]);
 });
 
 test("acciones legales persisten IsActivo en alta y edicion", async () => {

@@ -1,23 +1,147 @@
+.legacy-provider-catalog-page {
+  box-sizing: border-box;
+  width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px;
+}
+
+.legacy-provider-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  height: 72px;
+}
+
+.legacy-provider-page-header > h1 {
+  width: 600px;
+  min-height: 40px;
+  margin: 0;
+  color: #272b30;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+}
+
+.legacy-provider-page-header .ant-btn-link {
+  height: 21px;
+  margin-top: 9px;
+  padding: 0;
+  color: #009e3d;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 21px;
+}
+
+.legacy-provider-page-header .ant-btn-link:hover,
+.legacy-provider-page-header .ant-btn-link:focus {
+  color: #009e3d;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-filters {
+  grid-template-columns: repeat(4, 288px);
+  width: 1200px;
+  margin-bottom: 38px;
+  padding-right: 0;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-filters .ant-input-affix-wrapper {
+  padding-inline: 16px;
+  border-radius: 4px !important;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-filters .ant-input-prefix {
+  margin-right: 8px;
+  color: #4d5c66;
+  font-size: 14px;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-check .ant-checkbox-inner {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-check .ant-checkbox-checked .ant-checkbox-inner::after {
+  width: 7px;
+  height: 12px;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-check .ant-checkbox + span {
+  padding-inline-start: 8px;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-table {
+  width: 1200px;
+  margin-right: 0;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-table .ant-table {
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-table .ant-table-container {
+  border-radius: 4px !important;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-table .ant-table-tbody > tr > td {
+  height: 56px;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-table .ant-table-tbody > tr.ant-table-expanded-row > td {
+  height: 56px;
+  padding: 0 5px !important;
+}
+
+.legacy-provider-catalog-page .legacy-catalog-table .ant-table-pagination {
+  width: 1200px;
+  margin: 16px 0 0;
+}
+
 .legacy-provider-destination-trigger.ant-btn-link {
-  align-items: center;
   display: inline-flex;
+  align-items: center;
   gap: 4px;
   padding-inline: 0;
+  color: #4d5c66;
+}
+
+.legacy-provider-destination-trigger.ant-btn-link .fa {
+  color: #4d5c66;
+  font-size: 14px;
+}
+
+.legacy-provider-edit.ant-btn {
+  width: 24px;
+  height: 32px;
+  padding: 0;
+  color: #009e3d;
+  font-size: 16px;
+}
+
+.legacy-provider-edit.ant-btn:hover,
+.legacy-provider-edit.ant-btn:focus {
+  color: #009e3d !important;
+  background: transparent !important;
 }
 
 .legacy-provider-destinations {
-  padding: 4px 20px 10px 44px;
+  padding: 4px 20px 10px 39px;
 }
 
 .legacy-provider-destinations-empty {
-  color: rgba(0, 0, 0, 0.65);
-  padding: 10px 0;
+  min-height: 56px;
+  padding: 5px 0;
+  color: #272b30;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .legacy-provider-destinations-loading {
   display: flex;
+  min-height: 56px;
+  align-items: center;
   justify-content: center;
-  padding: 16px 0;
 }
 
 .legacy-provider-destinations-table .ant-table {
@@ -27,4 +151,178 @@
 .legacy-provider-destinations-table .ant-table-thead > tr > th,
 .legacy-provider-destinations-table .ant-table-tbody > tr > td {
   padding-block: 8px;
+}
+
+.legacy-provider-boolean {
+  display: inline-flex;
+  width: 14px;
+  height: 21px;
+  align-items: center;
+  justify-content: center;
+  color: #272b30;
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.legacy-provider-modal-title {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  min-height: 55px;
+  align-items: center;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 36px;
+  text-align: center;
+}
+
+.legacy-provider-modal-title img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.legacy-provider-modal-title span {
+  padding-right: 48px;
+}
+
+.legacy-provider-editor-modal .ant-modal-content,
+.legacy-provider-loading-modal .ant-modal-content {
+  border-radius: 4px;
+}
+
+.legacy-provider-modal-form {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 24px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.legacy-provider-modal-form .ant-form-item {
+  margin-bottom: 20px;
+}
+
+.legacy-provider-modal-form .ant-form-item-label {
+  padding-bottom: 1px;
+}
+
+.legacy-provider-modal-form .ant-input,
+.legacy-provider-modal-form .ant-input-affix-wrapper,
+.legacy-provider-modal-form .ant-select-selector {
+  min-height: 40px !important;
+  padding-inline: 16px !important;
+  border-radius: 4px !important;
+}
+
+.legacy-provider-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+
+.legacy-provider-checkbox-grid .ant-form-item {
+  margin-bottom: 8px;
+}
+
+.legacy-provider-checkbox-grid .ant-form-item-label {
+  height: 22px;
+  padding: 0;
+}
+
+.legacy-provider-checkbox-grid .ant-form-item-label > label,
+.legacy-provider-branch-label {
+  height: 21px;
+  color: #4f575e;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+}
+
+.legacy-provider-checkbox-grid .ant-checkbox-inner {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.legacy-provider-checkbox-grid .ant-checkbox-checked .ant-checkbox-inner::after {
+  width: 7px;
+  height: 12px;
+}
+
+.legacy-provider-branch-field {
+  grid-column: 2 / 4;
+}
+
+.legacy-provider-branch-field .ant-form-item {
+  margin-bottom: 8px;
+}
+
+.legacy-provider-existing-branch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+}
+
+.legacy-provider-existing-branch-edit.ant-btn {
+  width: 32px;
+  height: 40px;
+  padding: 0;
+  color: #009e3d;
+  font-size: 16px;
+}
+
+.legacy-provider-existing-branch-edit.ant-btn:hover,
+.legacy-provider-existing-branch-edit.ant-btn:focus {
+  color: #009e3d !important;
+  background: transparent !important;
+}
+
+.legacy-provider-modal-form .legacy-catalog-modal-actions {
+  gap: 24px;
+  margin-top: 20px;
+}
+
+.legacy-provider-modal-form .legacy-catalog-modal-actions .ant-btn {
+  min-width: 0;
+  height: 40px;
+  padding-inline: 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.legacy-provider-modal-form .legacy-catalog-modal-actions .legacy-provider-cancel.ant-btn,
+.legacy-provider-modal-form .legacy-catalog-modal-actions .legacy-provider-cancel.ant-btn:hover,
+.legacy-provider-modal-form .legacy-catalog-modal-actions .legacy-provider-cancel.ant-btn:focus {
+  border-color: #870707;
+  color: #fff;
+  background: #870707;
+}
+
+.legacy-provider-modal-form .legacy-catalog-modal-actions .ant-btn-primary,
+.legacy-provider-modal-form .legacy-catalog-modal-actions .ant-btn-primary:hover,
+.legacy-provider-modal-form .legacy-catalog-modal-actions .ant-btn-primary:focus {
+  border-color: #4d5c66;
+  color: #fff;
+  background: #4d5c66;
+}
+
+.legacy-provider-loading-modal .ant-modal-title {
+  font-size: 24px;
+  font-weight: 400;
+  text-align: center;
+}
+
+.legacy-provider-loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0;
+  color: #009e3d;
+}
+
+.legacy-provider-loading-content .ant-spin-dot {
+  font-size: 80px;
 }

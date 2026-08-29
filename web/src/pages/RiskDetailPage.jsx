@@ -1,9 +1,10 @@
-import { ArrowLeftOutlined, FilePdfOutlined } from "@ant-design/icons";
-import { Alert, Collapse, Spin } from "antd";
+import { Spin } from "antd";
 import { useEffect, useState } from "react";
 import { useHistory, useLocation } from "react-router-dom";
+import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
 import { getRiskAnalysisDetail } from "../services/riskService.js";
 import { getS3TemporaryUrl } from "../services/tdS3Service.js";
+import { compactRiskScore, RISK_QUERY_ERROR } from "./riskParity.js";
 import "../styles/risk.css";
 
 function temporaryUrl(result) {
@@ -18,15 +19,19 @@ export function RiskDetailPage() {
   const [pdfUrl, setPdfUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeClause, setActiveClause] = useState("");
 
   useEffect(() => {
     let active = true;
     async function load() {
       setLoading(true);
+      setAnalysis(null);
+      setPdfUrl("");
+      setActiveClause("");
       const result = await getRiskAnalysisDetail(codArchivo);
       if (!active) return;
       if (!result.success) {
-        setError(result.message || "No fue posible consultar el detalle del análisis de riesgo.");
+        setError(RISK_QUERY_ERROR);
         setLoading(false);
         return;
       }
@@ -50,64 +55,77 @@ export function RiskDetailPage() {
     <div className="legacy-risk-detail-page">
       <div className="legacy-risk-detail-title-row">
         <h1>Detalle Análisis Contrato</h1>
-        <button type="button" onClick={() => history.push("/scrHistoricoRiesgo")}>
-          <ArrowLeftOutlined /> Regresar
-        </button>
+        <a
+          href="#"
+          onClick={(event) => {
+            event.preventDefault();
+            history.push("/scrHistoricoRiesgo");
+          }}
+        >
+          <i className="fa fa-arrow-circle-left fa-2x" aria-hidden="true" />
+          <span>Regresar</span>
+        </a>
       </div>
 
-      {error && <Alert type="error" showIcon message={error} />}
+      <LegacyErrorFeedback message={error} />
 
       {analysis && (
-        <div className="legacy-risk-detail-grid">
-          <div className="legacy-risk-pdf-panel">
-            {pdfUrl ? (
-              <iframe title={`Contrato ${analysis.codArchivo}`} src={pdfUrl} sandbox="" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="legacy-risk-pdf-empty">
-                <FilePdfOutlined />
-                <span>Documento no disponible</span>
+        <>
+          <div className="legacy-risk-detail-grid">
+            <div className="legacy-risk-pdf-panel">
+              <iframe title={`Contrato ${analysis.codArchivo}`} src={pdfUrl || "about:blank"} />
+            </div>
+
+            <div className="legacy-risk-analysis-panel">
+              <div className="legacy-risk-score-block">
+                <span>Riesgo Puntaje</span>
+                <strong className={Number(analysis.riskScore) >= 9 ? "legacy-risk-critical" : ""}>
+                  {compactRiskScore(analysis.riskScore)}
+                </strong>
               </div>
-            )}
-          </div>
 
-          <div className="legacy-risk-analysis-panel">
-            <div className="legacy-risk-score-block">
-              <span>Riesgo Puntaje</span>
-              <strong className={Number(analysis.riskScore) >= 9 ? "legacy-risk-critical" : ""}>
-                {Number(analysis.riskScore)}
-              </strong>
-            </div>
-
-            <Collapse
-              className="legacy-risk-clauses"
-              items={(analysis.clauses || []).map((clause) => ({
-                key: clause.key,
-                label: clause.title,
-                children: (
-                  <div className="legacy-risk-clause-fields">
-                    {(clause.fields || []).map((field) => (
-                      <div className="legacy-risk-clause-field" key={field.key}>
-                        <span>{field.label}</span>
-                        <p>{field.value}</p>
-                      </div>
-                    ))}
-                  </div>
-                ),
-              }))}
-            />
-
-            <div className="legacy-risk-comments">
-              <section>
-                <h2>Comentario Breve</h2>
-                <p>{analysis.shortComment || ""}</p>
-              </section>
-              <section>
-                <h2>Comentario Riesgo</h2>
-                <p>{analysis.riskComment || ""}</p>
-              </section>
+              <div className="legacy-risk-clauses">
+                {(analysis.clauses || []).map((clause) => {
+                  const expanded = activeClause === clause.key;
+                  return (
+                    <section className={`legacy-risk-accordion-item${expanded ? " is-expanded" : ""}`} key={clause.key}>
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        aria-controls={`risk-clause-${clause.key}`}
+                        onClick={() => setActiveClause(expanded ? "" : clause.key)}
+                      >
+                        <span>{clause.title}</span>
+                        <i className={`fa fa-angle-down${expanded ? " is-expanded" : ""}`} aria-hidden="true" />
+                      </button>
+                      {expanded ? (
+                        <div id={`risk-clause-${clause.key}`} className="legacy-risk-clause-content" role="region" aria-label={clause.title}>
+                          {(clause.fields || []).map((field, index) => (
+                            <div className="legacy-risk-clause-field" key={`${field.key}-${index}`}>
+                              <span>{field.label}</span>
+                              <p>{field.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
+
+          <div className="legacy-risk-comments">
+            <section>
+              <h2>Comentario Breve</h2>
+              <p>{analysis.shortComment || ""}</p>
+            </section>
+            <section>
+              <h2>Comentario Riesgo</h2>
+              <p>{analysis.riskComment || ""}</p>
+            </section>
+          </div>
+        </>
       )}
     </div>
   );

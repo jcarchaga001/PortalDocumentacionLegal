@@ -89,3 +89,37 @@ test("un error de dominio ajeno a la consulta conserva el middleware normal", as
   assert.equal(state.status, 200);
   assert.equal(state.body, undefined);
 });
+
+test("normaliza también el fallo de GetPersonasAccionesFiltro sin borrar el Aggregate", async () => {
+  const databaseError = Object.assign(new Error("query failed"), {
+    code: "ER_CANT_AGGREGATE_NCOLLATIONS",
+    sqlState: "HY000",
+  });
+  const logs = [];
+  const controller = createIncidentController({
+    async catalogs() {
+      throw databaseError;
+    },
+  }, {
+    logError(...parameters) {
+      logs.push(parameters);
+    },
+  });
+  const { response, state } = responseRecorder();
+  let forwarded;
+
+  await controller.catalogs(
+    { auth: { countryCode: 4 }, params: { scope: "external-actions" }, query: {} },
+    response,
+    (error) => { forwarded = error; },
+  );
+
+  assert.equal(forwarded, undefined);
+  assert.equal(state.status, 500);
+  assert.equal(state.body.message, "Error executing query.");
+  assert.equal(state.body.error.code, "INCIDENT_ACTION_QUERY_ERROR");
+  assert.deepEqual(logs[0], [
+    "Incident action catalog query failed.",
+    { code: "ER_CANT_AGGREGATE_NCOLLATIONS", errno: null, sqlState: "HY000" },
+  ]);
+});

@@ -1,60 +1,41 @@
-import {
-  ArrowLeftOutlined,
-  DownloadOutlined,
-  EditOutlined,
-  EyeOutlined,
-  FileImageOutlined,
-  FileOutlined,
-  FilePdfOutlined,
-} from "@ant-design/icons";
-import { Button, Descriptions, Drawer, Empty, List, Spin, Table, Tag, Tooltip, message } from "antd";
+import { Drawer, Spin, Tooltip } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useHistory, useLocation } from "react-router-dom";
+import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
 import { ROUTES } from "../routes/routePaths.js";
-import { getAgreement } from "../services/agreementService.js";
-import { getCorporateClient } from "../services/corporateClientService.js";
+import { getAgreement, getAgreementContacts } from "../services/agreementService.js";
 import { downloadBlob } from "../services/fileHelpers.js";
 import { downloadS3File } from "../services/tdS3Service.js";
-
-const PREVIEWABLE_EXTENSIONS = new Set([".pdf", ".jpeg", ".jpg", ".png"]);
-
-function agreementIdFromSearch(search) {
-  const value = Number(new URLSearchParams(search).get("CodConvenio"));
-  return Number.isInteger(value) && value > 0 ? value : null;
-}
-
-function normalizeExtension(extension, fileName = "") {
-  const fromName = fileName.includes(".") ? fileName.slice(fileName.lastIndexOf(".")) : "";
-  const value = String(extension || fromName).trim().toLowerCase();
-  return value && !value.startsWith(".") ? `.${value}` : value;
-}
+import {
+  AGREEMENT_DETAIL_QUERY_ERROR,
+  agreementIdFromSearch,
+  isLegacyAgreementPreviewable,
+  legacyAgreementAuditText,
+  legacyAgreementBranchLabel,
+  legacyAgreementCreditLimit,
+  legacyAgreementEndDate,
+  legacyAgreementPromissoryText,
+} from "./agreementDetailParity.js";
+import "./AgreementDetailPage.css";
 
 function dateAndTime(date, time) {
   return [date, time].filter(Boolean).join(" ");
 }
 
-function formatCreditLimit(agreement) {
-  const amount = Number(agreement.creditLimit || 0).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  return agreement.isDollar ? `US $ ${amount}` : amount;
+function attachmentIconClass(extension) {
+  const normalized = String(extension || "").toLowerCase();
+  if (normalized === ".pdf") return "fa-file-pdf-o";
+  if ([".jpeg", ".jpg", ".png"].includes(normalized)) return "fa-file-image-o";
+  return "fa-file-o";
 }
 
-function promissoryNoteText(agreement) {
-  if (agreement.hasPromissoryNote) {
-    return `Sí tiene, vence el ${agreement.promissoryNoteExpirationDate || ""}`;
-  }
-  if (agreement.isPromissoryNoteExpired) {
-    return `Esta Vencido desde ${agreement.promissoryNoteExpirationDate || ""}`;
-  }
-  return "No tiene";
-}
-
-function AttachmentIcon({ extension }) {
-  if (extension === ".pdf") return <FilePdfOutlined />;
-  if ([".jpeg", ".jpg", ".png"].includes(extension)) return <FileImageOutlined />;
-  return <FileOutlined />;
+function Field({ label, children }) {
+  return (
+    <div className="legacy-agreement-detail__field">
+      <span className="legacy-agreement-detail__label">{label}</span>
+      <span className="legacy-agreement-detail__value">{children}</span>
+    </div>
+  );
 }
 
 function AttachmentPreview({ preview }) {
@@ -62,7 +43,7 @@ function AttachmentPreview({ preview }) {
     return <div className="legacy-agreement-preview-state"><Spin /></div>;
   }
   if (preview.error || !preview.url) {
-    return <Empty description="No se pudo cargar el archivo." />;
+    return <div className="legacy-agreement-preview-state" />;
   }
   if (preview.extension === ".pdf") {
     return <iframe className="legacy-agreement-preview-pdf" src={preview.url} title={preview.fileName} sandbox="" referrerPolicy="no-referrer" />;
@@ -70,37 +51,45 @@ function AttachmentPreview({ preview }) {
   return <img className="legacy-agreement-preview-image" src={preview.url} alt={preview.fileName} />;
 }
 
-const contactColumns = [
-  { title: "Nombre", dataIndex: "name", key: "name" },
-  { title: "Puesto", dataIndex: "position", key: "position" },
-  { title: "Teléfono", dataIndex: "phone", key: "phone" },
-  { title: "Correo", dataIndex: "email", key: "email" },
-];
-
 export function AgreementDetailPage() {
   const history = useHistory();
   const location = useLocation();
   const agreementId = useMemo(() => agreementIdFromSearch(location.search), [location.search]);
   const [agreement, setAgreement] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
-  const [clientLoading, setClientLoading] = useState(false);
   const [client, setClient] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [feedback, setFeedback] = useState("");
+  const [clientDrawerOpen, setClientDrawerOpen] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const previewRequest = useRef(0);
 
   useEffect(() => {
     let active = true;
-    if (!agreementId) {
-      setLoading(false);
-      return () => { active = false; };
-    }
-    getAgreement(agreementId).then((result) => {
+    async function load() {
+      setLoading(true);
+      setFeedback("");
+      setAgreement(null);
+      setClient(null);
+      if (!agreementId) {
+        setLoading(false);
+        return;
+      }
+      const agreementResult = await getAgreement(agreementId);
       if (!active) return;
-      if (result.success) setAgreement(result.data);
-      else message.error(result.message);
+      if (!agreementResult.success) {
+        setFeedback(AGREEMENT_DETAIL_QUERY_ERROR);
+        setLoading(false);
+        return;
+      }
+      setAgreement(agreementResult.data);
+      const contactsResult = await getAgreementContacts(agreementId);
+      if (!active) return;
+      if (contactsResult.success) setClient(contactsResult.data);
+      else setFeedback(AGREEMENT_DETAIL_QUERY_ERROR);
       setLoading(false);
-    });
+    }
+    load();
     return () => { active = false; };
   }, [agreementId]);
 
@@ -108,47 +97,30 @@ export function AgreementDetailPage() {
     if (preview?.url) URL.revokeObjectURL(preview.url);
   }, [preview?.url]);
 
-  async function openClientDetails() {
-    setClientDrawerOpen(true);
-    setClientLoading(true);
-    const result = await getCorporateClient(agreement.clientId);
-    if (result.success) setClient(result.data);
-    else {
-      setClient(null);
-      message.error(result.message);
-    }
-    setClientLoading(false);
-  }
-
-  async function downloadAttachment(attachment) {
-    const result = await downloadS3File({ s3Key: attachment.s3Key });
-    if (!result.success) {
-      message.error(result.message);
-      return;
-    }
-    downloadBlob(result.data, attachment.fileName || attachment.s3Key);
-  }
-
   async function openAttachment(attachment) {
     const requestId = ++previewRequest.current;
-    const extension = normalizeExtension(attachment.extension, attachment.fileName);
-    setPreview({
-      id: attachment.id,
-      extension,
-      fileName: attachment.fileName || "Archivo",
-      loading: true,
-      error: false,
-      url: "",
-    });
+    const extension = String(attachment.extension || "");
+    setPreview({ id: attachment.id, extension, fileName: attachment.fileName || "", loading: true, error: false, url: "" });
     const result = await downloadS3File({ s3Key: attachment.s3Key });
     if (requestId !== previewRequest.current) return;
     if (!result.success) {
       setPreview((current) => current?.id === attachment.id ? { ...current, loading: false, error: true } : current);
-      message.error(result.message);
+      setFeedback(result.message || AGREEMENT_DETAIL_QUERY_ERROR);
       return;
     }
     const url = URL.createObjectURL(result.data);
     setPreview((current) => current?.id === attachment.id ? { ...current, loading: false, url } : current);
+  }
+
+  async function downloadAttachment(attachment) {
+    setDownloadLoading(true);
+    const result = await downloadS3File({ s3Key: attachment.s3Key });
+    setDownloadLoading(false);
+    if (!result.success) {
+      setFeedback(result.message || AGREEMENT_DETAIL_QUERY_ERROR);
+      return;
+    }
+    downloadBlob(result.data, attachment.fileName || attachment.s3Key);
   }
 
   function closePreview() {
@@ -156,149 +128,113 @@ export function AgreementDetailPage() {
     setPreview(null);
   }
 
-  if (loading) return <div className="legacy-detail-loading"><Spin /></div>;
-  if (!agreement) return <Empty description="Convenio no encontrado" />;
-
-  const createdAt = dateAndTime(agreement.createdDate, agreement.createdTime);
-  const updatedAt = dateAndTime(agreement.updatedDate, agreement.updatedTime);
+  if (loading) return <div className="legacy-agreement-detail__loading"><Spin /></div>;
 
   return (
-    <div className="legacy-detail-page">
-      <div className="legacy-detail-toolbar">
-        <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => history.push(ROUTES.agreements)}>Volver</Button>
-        <Button type="link" icon={<EditOutlined />} onClick={() => history.push(`${ROUTES.agreementCreate}?CodConvenio=${agreement.id}`)}>Editar</Button>
-      </div>
-      <h1>Detalle Convenio</h1>
-      <Descriptions bordered column={3} className="legacy-detail-descriptions">
-        <Descriptions.Item label="Nombre del Cliente">
-          <Button className="legacy-agreement-client-link" type="link" onClick={openClientDetails}>
-            {agreement.clientName}
-          </Button>
-        </Descriptions.Item>
-        <Descriptions.Item label="Fecha Inicial">{agreement.startDate}</Descriptions.Item>
-        <Descriptions.Item label="Gestor de Cuenta">{agreement.accountManagerName}</Descriptions.Item>
-        <Descriptions.Item label="Límite de Crédito">{formatCreditLimit(agreement)}</Descriptions.Item>
-        <Descriptions.Item label="Fecha Final">{agreement.isIndefinite ? "Indefinido" : agreement.endDate}</Descriptions.Item>
-        <Descriptions.Item label="Puesto del Gestor">{agreement.accountManagerPosition}</Descriptions.Item>
-        <Descriptions.Item label="Días de Crédito">{agreement.creditDays}</Descriptions.Item>
-        <Descriptions.Item label="¿Tiene Pagaré?">{promissoryNoteText(agreement)}</Descriptions.Item>
-        <Descriptions.Item label="Sucursal/Departamento del Gestor">{agreement.accountManagerArea}</Descriptions.Item>
-        <Descriptions.Item label="Observacíon" span={3}>{agreement.observation || ""}</Descriptions.Item>
-      </Descriptions>
-
-      <section className="legacy-detail-section">
-        <h2>Sucursales que Facturan</h2>
-        <div className="legacy-branch-tags">
-          {(agreement.branchNames || []).map((branch) => <Tag key={branch}>{branch}</Tag>)}
-          {!agreement.branchNames?.length ? <span>Centralizado</span> : null}
-        </div>
-      </section>
-
-      <section className="legacy-detail-section">
-        <h2>Adjuntos del Convenio</h2>
-        <List
-          className="legacy-agreement-attachments"
-          locale={{ emptyText: "No hay adjuntos registrados." }}
-          dataSource={agreement.attachments || []}
-          renderItem={(attachment) => {
-            const extension = normalizeExtension(attachment.extension, attachment.fileName);
-            const actions = [];
-            if (PREVIEWABLE_EXTENSIONS.has(extension)) {
-              actions.push(
-                <Tooltip key="preview" title="Ver Archivo">
-                  <Button
-                    type="text"
-                    aria-label="Ver Archivo"
-                    icon={<EyeOutlined />}
-                    onClick={() => openAttachment(attachment)}
-                  />
-                </Tooltip>,
-              );
-            }
-            actions.push(
-              <Tooltip key="download" title="Descargar Archivo">
-                <Button
-                  type="text"
-                  aria-label="Descargar Archivo"
-                  icon={<DownloadOutlined />}
-                  onClick={() => downloadAttachment(attachment)}
-                />
-              </Tooltip>,
-            );
-            return (
-              <List.Item actions={actions}>
-                <List.Item.Meta
-                  avatar={<AttachmentIcon extension={extension} />}
-                  title={(
-                    <div className="legacy-agreement-attachment-field">
-                      <span>Nombre Archivo</span>
-                      <strong>{attachment.fileName}</strong>
-                    </div>
-                  )}
-                  description={(
-                    <div className="legacy-agreement-attachment-field">
-                      <span>Fecha Hora de Carga</span>
-                      <strong>{dateAndTime(attachment.createdDate, attachment.createdTime)}</strong>
-                    </div>
-                  )}
-                />
-              </List.Item>
-            );
-          }}
-        />
-      </section>
-
-      <div className="legacy-detail-created">
-        Creado el: {createdAt} por: {agreement.createdByName || ""}
-        {agreement.updatedByPersonId ? `/Actualizado el: ${updatedAt} por: ${agreement.updatedByName || ""}` : null}
-      </div>
-
-      <Drawer
-        title="Visor de Archivos"
-        placement="right"
-        width="60%"
-        open={Boolean(preview)}
-        closable={false}
-        onClose={closePreview}
-        destroyOnHidden
-      >
-        <AttachmentPreview preview={preview} />
-      </Drawer>
-
-      <Drawer
-        title={client?.name || agreement.clientName}
-        placement="right"
-        width="40%"
-        open={clientDrawerOpen}
-        closable={false}
-        onClose={() => setClientDrawerOpen(false)}
-      >
-        {clientLoading ? (
-          <div className="legacy-agreement-preview-state"><Spin /></div>
-        ) : client ? (
-          <div className="legacy-agreement-client-panel">
-            <Descriptions column={1} colon={false} size="small">
-              <Descriptions.Item label="Código FA">{client.faCode || ""}</Descriptions.Item>
-              <Descriptions.Item label="Puesto del Contacto">{client.contactPosition || ""}</Descriptions.Item>
-              <Descriptions.Item label="Corre del Contacto">{client.contactEmail || ""}</Descriptions.Item>
-              <Descriptions.Item label="Contacto Principal">{client.contactName || ""}</Descriptions.Item>
-              <Descriptions.Item label="Teléfono del Contacto">{client.contactPhone || ""}</Descriptions.Item>
-            </Descriptions>
-            <h3>Contactos adicionales</h3>
-            <Table
-              rowKey={(contact) => contact.id || `${contact.name}-${contact.email}`}
-              columns={contactColumns}
-              dataSource={client.allContacts || client.contacts || []}
-              locale={{ emptyText: "No hay contactos adicionales." }}
-              pagination={false}
-              size="small"
-              scroll={{ x: 560 }}
-            />
+    <div className="legacy-agreement-detail">
+      <LegacyErrorFeedback message={feedback} />
+      {agreement ? (
+        <>
+          <div className="legacy-agreement-detail__toolbar">
+            <button className="legacy-agreement-detail__link" type="button" onClick={() => history.push(ROUTES.agreements)}>
+              <i className="fa fa-chevron-left fa-1x" aria-hidden="true" />Volver
+            </button>
+            <button className="legacy-agreement-detail__link" type="button" onClick={() => history.push(`${ROUTES.agreementCreate}?CodConvenio=${agreement.id}`)}>
+              <i className="fa fa-pencil-square-o fa-1x" aria-hidden="true" />Editar
+            </button>
           </div>
-        ) : (
-          <Empty description="No fue posible consultar el cliente." />
-        )}
-      </Drawer>
+
+          <section className="legacy-agreement-detail__card">
+            <h1 className="legacy-agreement-detail__heading">Detalle Convenio</h1>
+            <div className="legacy-agreement-detail__grid">
+              <div className="legacy-agreement-detail__column">
+                <Field label="Nombre del Cliente">
+                  <button className="legacy-agreement-detail__link legacy-agreement-detail__client" type="button" onClick={() => setClientDrawerOpen(true)}>{agreement.clientName}</button>
+                </Field>
+                <Field label="Fecha Inicial">{agreement.startDate}</Field>
+                <Field label="Gestor de Cuenta">{agreement.accountManagerName}</Field>
+              </div>
+              <div className="legacy-agreement-detail__column">
+                <Field label="Límite de Crédito">{legacyAgreementCreditLimit(agreement)}</Field>
+                <Field label="Fecha Final">{legacyAgreementEndDate(agreement)}</Field>
+                <Field label="Puesto del Gestor">{agreement.accountManagerPosition}</Field>
+              </div>
+              <div className="legacy-agreement-detail__column">
+                <Field label="Días de Crédito">{agreement.creditDays}</Field>
+                <Field label="¿Tiene Pagaré?">{legacyAgreementPromissoryText(agreement)}</Field>
+                <Field label="Sucursal/Departamento del Gestor">{agreement.accountManagerArea}</Field>
+              </div>
+              <div className="legacy-agreement-detail__column">
+                <Field label="Observacíon">{agreement.observation || ""}</Field>
+              </div>
+            </div>
+          </section>
+
+          <section className="legacy-agreement-detail__card">
+            <h2 className="legacy-agreement-detail__heading">Sucursales que Facturan</h2>
+            <div className="legacy-agreement-detail__list">
+              {(agreement.branchNames || []).map((branch) => (
+                <div className="legacy-agreement-branch" key={branch}>
+                  <div className="legacy-agreement-branch__card"><div className="legacy-agreement-branch__value">{legacyAgreementBranchLabel(branch)}</div></div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="legacy-agreement-detail__card">
+            <h2 className="legacy-agreement-detail__heading">Adjuntos del Convenio</h2>
+            <div className="legacy-agreement-attachment-list">
+              {(agreement.attachments || []).map((attachment) => (
+                <article className="legacy-agreement-attachment" key={attachment.id}>
+                  <div className="legacy-agreement-attachment__row">
+                    <div className="legacy-agreement-attachment__type"><i className={`fa ${attachmentIconClass(attachment.extension)} fa-2x`} aria-hidden="true" /></div>
+                    <div className="legacy-agreement-attachment__field legacy-agreement-attachment__field--name">
+                      <span className="legacy-agreement-attachment__label">Nombre Archivo</span><span className="legacy-agreement-attachment__value">{attachment.fileName}</span>
+                    </div>
+                    <div className="legacy-agreement-attachment__field legacy-agreement-attachment__field--date">
+                      <span className="legacy-agreement-attachment__label">Fecha Hora de Carga</span><span className="legacy-agreement-attachment__value">{dateAndTime(attachment.createdDate, attachment.createdTime)}</span>
+                    </div>
+                    <div className="legacy-agreement-attachment__actions">
+                      {isLegacyAgreementPreviewable(attachment.extension) ? (
+                        <Tooltip title="Ver" placement="top"><button className="legacy-agreement-detail__icon-link legacy-agreement-detail__icon-link--preview" type="button" aria-label="Ver" onClick={() => openAttachment(attachment)}><i className="fa fa-eye fa-2x" aria-hidden="true" /></button></Tooltip>
+                      ) : null}
+                      <Tooltip title="Descargar" placement="top"><button className="legacy-agreement-detail__icon-link" type="button" aria-label="Descargar" onClick={() => downloadAttachment(attachment)}><i className="fa fa-download fa-2x" aria-hidden="true" /></button></Tooltip>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <div className="legacy-agreement-detail__audit">{legacyAgreementAuditText(agreement)}</div>
+
+          <Drawer rootClassName="legacy-agreement-preview-drawer" title="Visor de Archivos" placement="right" width="60%" open={Boolean(preview)} closable={false} onClose={closePreview} destroyOnHidden>
+            <AttachmentPreview preview={preview} />
+          </Drawer>
+
+          <Drawer rootClassName="legacy-agreement-client-drawer" title={client?.name || agreement.clientName} placement="right" width="40%" open={clientDrawerOpen} closable={false} onClose={() => setClientDrawerOpen(false)}>
+            {client ? (
+              <div className="legacy-agreement-client">
+                <div className="legacy-agreement-client__grid">
+                  <div className="legacy-agreement-client__field"><span className="legacy-agreement-client__label">Código FA</span><span className="legacy-agreement-client__value">{client.faCode || ""}</span></div>
+                  <div className="legacy-agreement-client__field"><span className="legacy-agreement-client__label">Puesto del Contacto</span><span className="legacy-agreement-client__value">{client.contactPosition || "No tiene"}</span></div>
+                  <div className="legacy-agreement-client__field"><span className="legacy-agreement-client__label">Corre del Contacto</span><span className="legacy-agreement-client__value">{client.contactEmail || "No tiene"}</span></div>
+                  <div className="legacy-agreement-client__field"><span className="legacy-agreement-client__label">Contacto Principal</span><span className="legacy-agreement-client__value">{client.contactName || ""}</span></div>
+                  <div className="legacy-agreement-client__field"><span className="legacy-agreement-client__label">Teléfono</span><span className="legacy-agreement-client__value">{client.contactPhone || ""}</span></div>
+                </div>
+                <section className="legacy-agreement-client__contacts">
+                  <h3>Contactos adicionales</h3>
+                  <table className="legacy-agreement-client__table">
+                    <thead><tr><th>Nombre</th><th>Puesto</th><th>Teléfono</th><th>Correo</th></tr></thead>
+                    <tbody>{(client.contacts || []).map((contact, index) => <tr key={contact.id || `contact-${index}`}><td>{contact.name || ""}</td><td>{contact.position || ""}</td><td>{contact.phone || ""}</td><td>{contact.email || ""}</td></tr>)}</tbody>
+                  </table>
+                </section>
+              </div>
+            ) : null}
+          </Drawer>
+        </>
+      ) : null}
+      {downloadLoading ? <div className="legacy-agreement-download-mask"><Spin /></div> : null}
     </div>
   );
 }

@@ -1,30 +1,43 @@
 import { getDatabasePool } from "../config/database.js";
 import { getDatabaseNames } from "../config/databaseNames.js";
 
-function addOptionalFilter(conditions, parameters, value, sql) {
-  if (value !== undefined && value !== null && value !== "") {
-    conditions.push(sql);
-    parameters.push(value);
-  }
-}
-
 export function createAgreementRepository(pool) {
   const databases = getDatabaseNames();
 
-  function buildFilters(countryCode, filters) {
+  function buildDataFilters(countryCode, filters) {
     const conditions = ["cc.CodPais = ?"];
     const parameters = [countryCode];
-    addOptionalFilter(conditions, parameters, filters.clientId, "a.CodClienteCorporativo = ?");
-    addOptionalFilter(conditions, parameters, filters.startDate, "a.FechaFinal >= ?");
-    addOptionalFilter(conditions, parameters, filters.endDate, "a.FechaFinal <= ?");
-    if (filters.indefinite) {
-      conditions.push("(DATEDIFF(a.FechaFinal, CURDATE()) < 30 OR a.isIndefinido = 1)");
+    if (filters.clientId) {
+      conditions.push("a.CodClienteCorporativo = ?");
+      parameters.push(filters.clientId);
     }
-    if (filters.search) {
-      conditions.push("(cc.Nombre_Cliente LIKE CONCAT('%', ?, '%') OR a.CodEmpleado LIKE CONCAT('%', ?, '%'))");
-      parameters.push(filters.search, filters.search);
+    if (filters.startDate) {
+      conditions.push("a.FechaFinal >= ?");
+      parameters.push(filters.startDate);
     }
-    return { where: `WHERE ${conditions.join(" AND ")}`, parameters };
+    if (filters.endDate) {
+      conditions.push("a.FechaFinal <= ?");
+      parameters.push(filters.endDate);
+    }
+    return { conditions, parameters };
+  }
+
+  function buildCountFilters(countryCode, filters) {
+    const conditions = ["cc.CodPais = ?"];
+    const parameters = [countryCode];
+    if (filters.clientId) {
+      conditions.push("a.CodClienteCorporativo = ?");
+      parameters.push(filters.clientId);
+    }
+    if (filters.startDate) {
+      conditions.push("(a.FechaInicial >= ? OR a.FechaFinal >= ?)");
+      parameters.push(filters.startDate, filters.startDate);
+    }
+    if (filters.endDate) {
+      conditions.push("(a.FechaInicial <= ? OR a.FechaFinal <= ?)");
+      parameters.push(filters.endDate, filters.endDate);
+    }
+    return { conditions, parameters };
   }
 
   const baseJoins = `
@@ -40,7 +53,7 @@ export function createAgreementRepository(pool) {
       ON b.Codigo_Sucursal = axb.CodSucursal
   `;
 
-  async function getAccountManagers(databasePool, codes) {
+  async function getAccountManagers(databasePool, codes, countryCode) {
     const uniqueCodes = [...new Set(codes.filter(Boolean))];
     if (!uniqueCodes.length) return new Map();
     const placeholders = uniqueCodes.map(() => "?").join(",");
@@ -58,8 +71,9 @@ export function createAgreementRepository(pool) {
        LEFT JOIN ${databases.people}.tblSucursales branch
          ON branch.Codigo_Sucursal = employee.CodSucursal
        WHERE employee.CodigoInterno IN (${placeholders})
+         AND employee.CodPais = ?
        ORDER BY employee.CodigoInterno, employee.FechaCreacion ASC`,
-      uniqueCodes,
+      [...uniqueCodes, countryCode],
     );
     const managers = new Map();
     for (const row of rows) {
@@ -137,52 +151,90 @@ export function createAgreementRepository(pool) {
   return {
     async list(countryCode, filters) {
       const databasePool = pool || getDatabasePool();
-      const { where, parameters } = buildFilters(countryCode, filters);
       const offset = (filters.page - 1) * filters.pageSize;
+      const dataFilters = buildDataFilters(countryCode, filters);
+      const countFilters = buildCountFilters(countryCode, filters);
+      const dataWhere = dataFilters.conditions.join(" AND ");
+      const countWhere = countFilters.conditions.join(" AND ");
+      const stableIndefinite = filters.indefinite ? "AND a.isIndefinido = 1" : "";
+      const selectColumns = `
+        a.CodConvenio AS id,
+        a.CodClienteCorporativo AS clientId,
+        COALESCE(cc.Nombre_Cliente, a.NombreCliente) AS clientName,
+        a.CodEmpleado AS accountManagerCode,
+        a.LimiteCredito AS creditLimit,
+        a.isDollar AS isDollar,
+        a.DiasCredito AS creditDays,
+        a.HasPagare AS hasPromissoryNote,
+        a.isPagareVencido AS isPromissoryNoteExpired,
+        DATE_FORMAT(a.FechaVencimientoPagare, '%Y-%m-%d') AS promissoryNoteExpirationDate,
+        DATE_FORMAT(a.FechaInicial, '%Y-%m-%d') AS startDate,
+        DATE_FORMAT(a.FechaFinal, '%Y-%m-%d') AS endDate,
+        a.isIndefinido AS isIndefinite,
+        a.isIndefinidoPagare AS isPromissoryNoteIndefinite,
+        a.Observacion AS observation`;
       const query = `
-        SELECT a.CodConvenio AS id,
-               a.CodClienteCorporativo AS clientId,
-               COALESCE(cc.Nombre_Cliente, a.NombreCliente) AS clientName,
-               a.CodEmpleado AS accountManagerCode,
-               a.LimiteCredito AS creditLimit,
-               a.isDollar AS isDollar,
-               a.DiasCredito AS creditDays,
-               a.HasPagare AS hasPromissoryNote,
-               a.isPagareVencido AS isPromissoryNoteExpired,
-               DATE_FORMAT(a.FechaVencimientoPagare, '%Y-%m-%d') AS promissoryNoteExpirationDate,
-               DATE_FORMAT(a.FechaInicial, '%Y-%m-%d') AS startDate,
-               DATE_FORMAT(a.FechaFinal, '%Y-%m-%d') AS endDate,
-               a.isIndefinido AS isIndefinite,
-               a.isIndefinidoPagare AS isPromissoryNoteIndefinite,
-               a.Observacion AS observation,
-               GROUP_CONCAT(DISTINCT CONCAT(b.Codigo_InternoSucursal, ' ', b.Nombre_Sucursal)
-                            ORDER BY b.OrdenSucursal SEPARATOR ', ') AS branchNames,
-               CASE
-                 WHEN a.isIndefinido = 1 THEN 'Indefinido'
-                 WHEN DATEDIFF(a.FechaFinal, CURDATE()) < 0 THEN 'Vencido'
-                 WHEN DATEDIFF(a.FechaFinal, CURDATE()) < 30 THEN 'Por Vencer'
-                 ELSE 'Vigente'
-               END AS expirationStatus
-        ${joins}
-        ${where}
-        GROUP BY a.CodConvenio
-        ORDER BY CASE
-                   WHEN a.isIndefinido = 1 THEN 2
-                   WHEN DATEDIFF(a.FechaFinal, CURDATE()) BETWEEN 0 AND 29 THEN 0
-                   WHEN DATEDIFF(a.FechaFinal, CURDATE()) < 0 THEN 1
-                   ELSE 2
-                 END,
-                 a.CodConvenio ASC
+        SELECT legacy_rows.*
+        FROM (
+          SELECT near_rows.* FROM (
+            SELECT ${selectColumns}, 'Por Vencer' AS expirationStatus
+            ${baseJoins}
+            WHERE ${dataWhere}
+              AND DATEDIFF(a.FechaFinal, NOW()) < 30
+              AND DATEDIFF(a.FechaFinal, NOW()) > -1
+              AND a.isIndefinido = 0
+          ) near_rows
+          UNION ALL
+          SELECT expired_rows.* FROM (
+            SELECT ${selectColumns}, 'Vencido' AS expirationStatus
+            ${baseJoins}
+            WHERE ${dataWhere}
+              AND DATEDIFF(a.FechaFinal, NOW()) < 0
+              AND a.isIndefinido = 0
+          ) expired_rows
+          UNION ALL
+          SELECT stable_rows.* FROM (
+            SELECT ${selectColumns},
+                   CASE WHEN a.isIndefinido = 1 THEN 'Indefinido' ELSE 'Vigente' END AS expirationStatus
+            ${baseJoins}
+            WHERE ${dataWhere}
+              AND (a.isIndefinido = 1 OR DATEDIFF(a.FechaFinal, NOW()) >= 30)
+              ${stableIndefinite}
+            ORDER BY a.CodConvenio DESC
+          ) stable_rows
+        ) legacy_rows
         LIMIT ${filters.pageSize} OFFSET ${offset}
       `;
-      const countQuery = `SELECT COUNT(*) AS total ${baseJoins} ${where}`;
+      const countQuery = `
+        SELECT COUNT(*) AS total
+        FROM (
+          SELECT a.CodConvenio
+          ${baseJoins}
+          WHERE ${countWhere}
+            AND DATEDIFF(a.FechaFinal, NOW()) < 30
+          UNION ALL
+          SELECT a.CodConvenio
+          ${baseJoins}
+          WHERE ${countWhere}
+            AND DATEDIFF(a.FechaFinal, NOW()) >= 30
+            ${stableIndefinite}
+        ) legacy_count
+        LIMIT ${filters.pageSize} OFFSET ${offset}
+      `;
+      const dataParameters = [
+        ...dataFilters.parameters,
+        ...dataFilters.parameters,
+        ...dataFilters.parameters,
+      ];
+      const countParameters = [...countFilters.parameters, ...countFilters.parameters];
       const [[items], [countRows]] = await Promise.all([
-        databasePool.execute(query, parameters),
-        databasePool.execute(countQuery, parameters),
+        databasePool.execute(query, dataParameters),
+        databasePool.execute(countQuery, countParameters),
       ]);
       const managers = await getAccountManagers(
         databasePool,
         items.map((item) => item.accountManagerCode),
+        countryCode,
       );
       return {
         items: items.map((item) => {
@@ -204,6 +256,18 @@ export function createAgreementRepository(pool) {
         page: filters.page,
         pageSize: filters.pageSize,
       };
+    },
+
+    async getClients(countryCode) {
+      const databasePool = pool || getDatabasePool();
+      const [rows] = await databasePool.execute(
+        `SELECT CodClientesCorp AS id, Nombre_Cliente AS name
+         FROM ${databases.documents}.tblClientesCorp
+         WHERE CodPais = ? AND EstadoCliente = 1
+         LIMIT 50`,
+        [countryCode],
+      );
+      return rows;
     },
 
     async getById(countryCode, agreementId) {
@@ -250,6 +314,7 @@ export function createAgreementRepository(pool) {
       const managers = await getAccountManagers(
         databasePool,
         [agreement.accountManagerCode],
+        countryCode,
       );
       const manager = managers.get(agreement.accountManagerCode);
       const [attachments] = await databasePool.execute(
@@ -277,28 +342,83 @@ export function createAgreementRepository(pool) {
       };
     },
 
+    async getClientContacts(countryCode, agreementId) {
+      const databasePool = pool || getDatabasePool();
+      const [rows] = await databasePool.execute(
+        `SELECT client.CodClientesCorp AS id,
+                client.CodigoFA AS faCode,
+                client.Nombre_Cliente AS name,
+                client.NombreContacto AS contactName,
+                client.PuestoContacto AS contactPosition,
+                client.TelefonoContacto AS contactPhone,
+                client.CorreoContacto AS contactEmail,
+                contact.CodContacto AS additionalContactId,
+                contact.Nombre AS additionalContactName,
+                contact.Puesto AS additionalContactPosition,
+                contact.Telefono AS additionalContactPhone,
+                contact.Correo AS additionalContactEmail,
+                contact.isActivo AS additionalContactIsActive
+         FROM ${databases.documents}.tblConvenios agreement
+         INNER JOIN ${databases.documents}.tblClientesCorp client
+                 ON client.CodClientesCorp = agreement.CodClienteCorporativo
+                AND client.CodPais = ?
+         LEFT JOIN ${databases.documents}.tblContactosClientesCorp contact
+                ON contact.CodClienteCorp = client.CodClientesCorp
+         WHERE agreement.CodConvenio = ?`,
+        [countryCode, agreementId],
+      );
+      if (!rows[0]) return null;
+      return {
+        id: rows[0].id,
+        faCode: rows[0].faCode,
+        name: rows[0].name,
+        contactName: rows[0].contactName,
+        contactPosition: rows[0].contactPosition,
+        contactPhone: rows[0].contactPhone,
+        contactEmail: rows[0].contactEmail,
+        contacts: rows.map((row) => ({
+          id: row.additionalContactId,
+          name: row.additionalContactName || "",
+          position: row.additionalContactPosition || "",
+          phone: row.additionalContactPhone || "",
+          email: row.additionalContactEmail || "",
+          isActive: Boolean(row.additionalContactIsActive),
+        })),
+      };
+    },
+
     async getCatalogs(countryCode) {
       const databasePool = pool || getDatabasePool();
       const results = await Promise.all([
         databasePool.execute(
           `SELECT CodClientesCorp AS id, Nombre_Cliente AS name
            FROM ${databases.documents}.tblClientesCorp
-           WHERE CodPais = ? AND EstadoCliente = 1
-           ORDER BY Nombre_Cliente`,
+           WHERE CodPais = ?
+           ORDER BY Nombre_Cliente
+           LIMIT 9999999`,
           [countryCode],
         ),
         databasePool.execute(
-          `SELECT Codigo_Sucursal AS id, CONCAT(Codigo_InternoSucursal, ' ', Nombre_Sucursal) AS name
+          `SELECT Codigo_Sucursal AS id,
+                  Codigo_InternoSucursal AS internalCode,
+                  Nombre_Sucursal AS branchName,
+                  CASE
+                    WHEN Codigo_InternoSucursal = 'FA900' THEN 'Centralizadas'
+                    ELSE CONCAT(Codigo_InternoSucursal, ' - ', Nombre_Sucursal)
+                  END AS name
            FROM ${databases.people}.tblSucursales
-           WHERE Codigo_Pais = ? AND isActivo = 1 AND isAdministrativa = 0
-           ORDER BY OrdenSucursal`,
+           WHERE Codigo_Pais = ?
+             AND isActivo = 1
+             AND (isAdministrativa = 0 OR Codigo_Sucursal = 768)
+           LIMIT 500`,
           [countryCode],
         ),
         databasePool.execute(
           `SELECT CodigoInterno AS id, NombreCompleto AS name, Puesto AS position, Area AS area
            FROM ${databases.humanResources}.vstEmpleadosMesEnCurso
-           WHERE CodPais = ? AND Estado IN ('1', 'Activo', 'ACTIVO')
-           ORDER BY NombreCompleto`,
+           WHERE CodPais = ?
+           ORDER BY NombreCompleto
+           LIMIT 500000`,
           [countryCode],
         ),
       ]);

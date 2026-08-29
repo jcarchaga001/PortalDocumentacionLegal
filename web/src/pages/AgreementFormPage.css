@@ -1,0 +1,175 @@
+.agreement-form-page {
+  box-sizing: border-box;
+  width: 100%;
+  color: #272b30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.agreement-form-title {
+  height: 40px;
+  margin: 0 0 32px;
+  color: #272b30;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+}
+
+.agreement-form-card {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 24px;
+  border: .8px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.agreement-form-card fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.agreement-form-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+.agreement-form-field { position: relative; min-width: 0; margin-bottom: 24px; }
+.agreement-form-columns > div > .agreement-form-field:last-child { margin-bottom: 0; }
+.agreement-form-field > label,
+.agreement-form-composite-labels label {
+  display: block;
+  height: 21px;
+  margin: 0 0 8px;
+  color: #4f575e;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+}
+.agreement-form-field > label.is-mandatory::after,
+.agreement-form-composite-labels label.is-mandatory::after { margin-left: 2px; color: #dc2020; content: "*"; }
+
+.agreement-form-input,
+.agreement-search-select__control,
+.agreement-multi-select__control,
+.agreement-form-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  outline: 0;
+  color: #272b30;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+}
+.agreement-form-input,
+.agreement-search-select__control,
+.agreement-multi-select__control { height: 40px; padding: 0 16px; line-height: 40px; }
+.agreement-form-input:focus,
+.agreement-search-select__control:focus,
+.agreement-multi-select__control:focus,
+.agreement-form-textarea:focus { border-color: #4d5c66; }
+.agreement-form-input:disabled { border-color: #dee2e6; color: #adb5bd; background: #f1f3f5; }
+.agreement-form-textarea { display: block; height: 51.1px; padding: 14px 16px; resize: none; line-height: 21px; }
+
+.agreement-search-select,
+.agreement-multi-select { position: relative; }
+.agreement-search-select__control,
+.agreement-multi-select__control { padding-right: 40px; }
+.agreement-search-select__control::placeholder,
+.agreement-multi-select__control::placeholder { color: #adb5bd; opacity: 1; }
+.agreement-select-caret { position: absolute; top: 0; right: 16px; height: 40px; color: #4f575e; font-size: 14px; line-height: 40px; pointer-events: none; }
+.agreement-select-options {
+  position: absolute;
+  z-index: 30;
+  top: 43px;
+  right: 0;
+  left: 0;
+  max-height: 224px;
+  overflow-y: auto;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(39, 43, 48, .15);
+}
+.agreement-select-option { display: block; width: 100%; min-height: 36px; padding: 7px 16px; border: 0; color: #272b30; background: #fff; font-size: 14px; line-height: 21px; text-align: left; cursor: pointer; }
+.agreement-select-option:hover,
+.agreement-select-option.is-selected { background: #f1f3f5; }
+
+.agreement-form-radio-field { box-sizing: border-box; margin-bottom: 34px; padding-left: 10px; }
+.agreement-form-radio-field > label { margin-bottom: 16px; }
+.agreement-form-radios { display: flex; height: 24px; align-items: center; }
+.agreement-form-radio { display: inline-flex; width: 81.1125px; height: 24px; align-items: center; color: #272b30; font-size: 14px; line-height: 21px; }
+.agreement-form-radio input,
+.agreement-form-checkbox input { position: absolute; opacity: 0; pointer-events: none; }
+.agreement-form-radio-mark {
+  display: inline-grid;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  place-items: center;
+  border: 1px solid #adb5bd;
+  border-radius: 50%;
+  background: #fff;
+}
+.agreement-form-radio input:checked + .agreement-form-radio-mark::after { width: 12px; height: 12px; border-radius: 50%; background: #4d5c66; content: ""; }
+
+.agreement-form-composite { position: relative; min-width: 0; margin-bottom: 24px; }
+.agreement-form-composite-labels,
+.agreement-form-composite-row { display: grid; grid-template-columns: calc(100% - 95.1px) 95.1px; align-items: start; }
+.agreement-form-composite-labels label:nth-child(2) { padding-left: 10px; }
+.agreement-form-checkbox { display: inline-flex; height: 40px; align-items: flex-start; color: #272b30; font-size: 14px; line-height: 21px; }
+.agreement-form-composite-row .agreement-form-checkbox { padding-left: 30px; }
+.agreement-form-checkbox-mark {
+  display: inline-grid;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  margin-right: 8px;
+  place-items: center;
+  border: 1px solid #adb5bd;
+  border-radius: 2px;
+  background: #fff;
+}
+.agreement-form-checkbox input:checked + .agreement-form-checkbox-mark::after { width: 7px; height: 13px; margin-top: -3px; transform: rotate(45deg); border-right: 2px solid #fff; border-bottom: 2px solid #fff; content: ""; }
+.agreement-form-checkbox input:checked + .agreement-form-checkbox-mark { border-color: #4d5c66; background: #4d5c66; }
+
+.agreement-form-branch-region { display: flex; box-sizing: border-box; height: 108.6px; align-items: flex-start; padding-top: 24px; }
+.agreement-form-branch-tags { display: flex; width: 100%; min-height: 60px; align-items: flex-start; gap: 8px; padding: 12px 16px; border: 1px solid #dee2e6; border-radius: 4px; background: #fff; }
+.agreement-form-branch-tag { display: inline-block; padding: 3px 10px; border-radius: 4px; color: #fff; background: #17a2b8; font-size: 12px; line-height: 18px; }
+
+.agreement-form-upload {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 181.6px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: .8px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+.agreement-form-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.agreement-form-upload .fa { margin-bottom: 8px; color: #ced4da; font-size: 42px; line-height: 42px; }
+.agreement-form-upload-primary { color: #ced4da; font-size: 22px; font-weight: 600; line-height: 28px; }
+.agreement-form-upload-secondary { color: #6594ec; font-size: 22px; font-weight: 600; line-height: 28px; }
+
+.agreement-form-files { box-sizing: border-box; height: 0; overflow: hidden; }
+.agreement-form-files.has-files { height: 98.6px; padding-top: 24px; overflow: visible; }
+.agreement-form-file { display: grid; height: 74.6px; grid-template-columns: 44px minmax(0, 1fr) 36px 36px; align-items: center; padding: 0 24px; border-bottom: 1px solid #dee2e6; color: #272b30; font-size: 14px; }
+.agreement-form-file .fa-file-pdf-o,
+.agreement-form-file .fa-file-o { color: #4d5c66; font-size: 28px; }
+.agreement-form-file .fa-check { color: #11bd35; font-size: 20px; }
+.agreement-form-file-remove { width: 28px; height: 28px; padding: 0; border: 0; color: #272b30; background: transparent; cursor: pointer; font-size: 28px; line-height: 28px; }
+
+.agreement-form-actions { display: flex; width: 100%; height: 40px; align-items: stretch; justify-content: flex-end; gap: 10px; margin-top: 50px; }
+.agreement-form-actions button { display: inline-flex; box-sizing: border-box; height: 40px; align-items: center; justify-content: center; padding: 0 16px; border: 1px solid #4d5c66; border-radius: 4px; font-size: 14px; font-weight: 600; line-height: 14px; cursor: pointer; }
+.agreement-form-cancel { color: #4d5c66; background: #fff; }
+.agreement-form-save { color: #fff; background: #4d5c66; }
+.agreement-form-actions button:disabled { cursor: default; opacity: .65; }
+.agreement-form-spinner { width: 14px; height: 14px; margin-right: 8px; border: 2px solid rgba(255, 255, 255, .45); border-top-color: #fff; border-radius: 50%; animation: agreement-form-spin .8s linear infinite; }
+@keyframes agreement-form-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 760px) {
+  .agreement-form-columns { grid-template-columns: 1fr; }
+  .agreement-form-branch-region { height: auto; min-height: 84px; }
+  .agreement-form-composite-labels,
+  .agreement-form-composite-row { grid-template-columns: minmax(0, 1fr) 95.1px; }
+}

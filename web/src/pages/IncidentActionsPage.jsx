@@ -1,7 +1,5 @@
 import {
-  ArrowLeftOutlined,
   DownloadOutlined,
-  MoreOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
 import {
@@ -19,7 +17,8 @@ import {
 import { useState } from "react";
 import { useHistory } from "react-router-dom";
 import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
-import { useAuth } from "../config/AuthContext.jsx";
+import { legacyIncidentDetailHref } from "../config/legacyIncidentContext.js";
+import { validateLegacyIncidentFileName } from "../config/legacyFileContracts.js";
 import { runtimeConfig } from "../config/runtime.js";
 import { downloadBlob } from "../services/fileHelpers.js";
 import { uploadIncidentFile } from "../services/incidentFileService.js";
@@ -40,6 +39,9 @@ import {
   getIncidentActionMenu,
   getIncidentActionQueryPresentation,
   getIncidentActionSurface,
+  compareIncidentActionRows,
+  formatLegacyActionDate,
+  legacyIncidentActionFooterText,
   incidentActionModalTitle,
   runIncidentActionOperation,
 } from "./incidentActionSurface.js";
@@ -88,7 +90,6 @@ const loadExternalActions = (query) => getIncidentActions("external", query);
 
 function IncidentActionsPage({ scope }) {
   const history = useHistory();
-  const { user } = useAuth();
   const surface = getIncidentActionSurface(scope);
   const external = surface.external;
   const listing = useIncidentListing({
@@ -110,11 +111,8 @@ function IncidentActionsPage({ scope }) {
     rows: listing.rows,
     loading: listing.loading,
     pagination: { ...listing.pagination, showSizeChanger: false },
-    errorCode: listing.errorCode,
+    errorCode: listing.errorCode || listing.catalogErrorCode,
   });
-
-  const canMutate = (row) => Number(user?.id) === 1
-    || Number(row.responsibleId) === Number(user?.id);
 
   async function runOperation(row, nextOperation, values = {}, file = null) {
     setSaving(true);
@@ -168,6 +166,17 @@ function IncidentActionsPage({ scope }) {
     }
   }
 
+  function acceptEvidenceFile(file) {
+    const validation = validateLegacyIncidentFileName(file?.name);
+    if (!validation.valid) {
+      message.error(validation.message);
+      return Upload.LIST_IGNORE;
+    }
+    setEvidenceFile(file);
+    operationForm.setFields([{ name: "evidence", errors: [] }]);
+    return false;
+  }
+
   async function saveOperation() {
     try {
       const values = await operationForm.validateFields();
@@ -199,43 +208,58 @@ function IncidentActionsPage({ scope }) {
   }
 
   const columns = [
-    { title: "Sucursal", dataIndex: "branchName", key: "branchName", width: 220 },
-    { title: "Nombre Acción", dataIndex: "actionName", key: "actionName", width: 220 },
-    { title: "Descripción", dataIndex: "description", key: "description", width: 330, ellipsis: true },
-    { title: "Responsable", dataIndex: "responsibleName", key: "responsibleName", width: 220 },
+    { title: "Sucursal", dataIndex: "branchName", key: "branchName", width: "8.97%" },
+    { title: "Nombre Acción", dataIndex: "actionName", key: "actionName", width: "14%", align: "center", sorter: compareIncidentActionRows("actionName") },
+    { title: "Descripción", dataIndex: "description", key: "description", width: "12.57%", align: "center", sorter: compareIncidentActionRows("description") },
+    { title: "Responsable", dataIndex: "responsibleName", key: "responsibleName", width: "12.29%", align: "center", sorter: compareIncidentActionRows("responsibleId") },
     {
       title: "Incidente",
       dataIndex: "incidentReference",
       key: "incidentReference",
-      width: 170,
+      width: "9.25%",
       render: (reference, row) => external ? (
         <Button type="link" className="legacy-action-reference" onClick={() => openExternalDetail(row)}>
           {display(reference)}
         </Button>
       ) : display(reference),
     },
-    { title: "Fecha Inicio", dataIndex: "startDate", key: "startDate", width: 140 },
-    { title: "Fecha Probable Vencimiento", dataIndex: "expectedDueDate", key: "expectedDueDate", width: 190 },
+    { title: "Fecha Inicio", dataIndex: "startDate", key: "startDate", width: "11.89%", align: "center", sorter: compareIncidentActionRows("startDate"), render: formatLegacyActionDate },
+    { title: <><span>Fecha Probable</span><br /> Vencimiento</>, dataIndex: "expectedDueDate", key: "expectedDueDate", width: "12.25%", render: formatLegacyActionDate },
     {
       title: "Estado",
       dataIndex: "statusName",
       key: "statusName",
-      width: 140,
+      width: "11.9%",
+      align: "center",
+      sorter: compareIncidentActionRows("statusId"),
       render: (name, row) => <StatusTag id={row.statusId} name={name} />,
     },
     {
       title: "",
       key: "actions",
-      width: 58,
+      width: "6.75%",
       render: (_, row) => (
         <Dropdown
           trigger={["click"]}
+          overlayClassName="legacy-action-overflow-menu"
           menu={{
-            items: getIncidentActionMenu({ statusId: row.statusId, canMutate: canMutate(row) }),
+            items: [{
+              type: "group",
+              label: "Opciones de Acción",
+              children: getIncidentActionMenu({ statusId: row.statusId }).map((item) => ({
+                ...item,
+                icon: <i className={`fa fa-${item.icon}`} style={{ color: item.color }} aria-hidden="true" />,
+              })),
+            }],
             onClick: ({ key }) => openOperation(row, key),
           }}
         >
-          <Button type="text" icon={<MoreOutlined />} aria-label={`Opciones de ${row.actionName || row.id}`} />
+          <Button
+            className="legacy-action-menu-trigger"
+            type="text"
+            icon={<i className="fa fa-ellipsis-v" aria-hidden="true" />}
+            aria-label={`Opciones de ${row.actionName || row.id}`}
+          />
         </Dropdown>
       ),
     },
@@ -244,10 +268,11 @@ function IncidentActionsPage({ scope }) {
   return (
     <div className="legacy-incident-page legacy-action-page">
       <button type="button" className="legacy-incident-back" onClick={() => history.goBack()}>
-        <ArrowLeftOutlined /> Regresar pantalla anterior...
+        <i className="fa fa-long-arrow-left" aria-hidden="true" />
+        <span>Regresar pantalla anterior...</span>
       </button>
       <div className="legacy-incident-title-row">
-        <h1>{external ? "Acciones Incidentes Externos" : "Acciones Incidentes Internos"}</h1>
+        <h1>{surface.title}</h1>
       </div>
 
       <Form
@@ -277,11 +302,16 @@ function IncidentActionsPage({ scope }) {
         columns={columns}
         dataSource={queryPresentation.rows}
         loading={queryPresentation.loading}
-        locale={{ emptyText: "No hay registros..." }}
-        pagination={queryPresentation.pagination}
-        onChange={listing.changePage}
-        scroll={{ x: 1700 }}
+        locale={{ emptyText: null }}
+        pagination={false}
+        tableLayout="fixed"
       />
+
+      <div className="legacy-action-footer" aria-label="Estado interno de acciones">
+        <span>
+          {legacyIncidentActionFooterText(queryPresentation.rows, selectedAction?.id)}
+        </span>
+      </div>
 
       <Modal
         title={incidentActionModalTitle(operation)}
@@ -315,9 +345,9 @@ function IncidentActionsPage({ scope }) {
           {operation === "close" && (
             <Form.Item name="evidence" label="Evidencia*">
               <Upload
-                beforeUpload={() => false}
+                beforeUpload={acceptEvidenceFile}
                 maxCount={1}
-                onChange={({ fileList }) => setEvidenceFile(fileList[0]?.originFileObj || null)}
+                onRemove={() => setEvidenceFile(null)}
               >
                 <Button icon={<UploadOutlined />}>Adjuntar documento</Button>
               </Upload>
@@ -341,7 +371,7 @@ function IncidentActionsPage({ scope }) {
               <Button
                 type="link"
                 className="legacy-action-go-incident"
-                href={`${runtimeConfig.basePath}/scrAccionesIncidentes?CodIncidente=${detail.id}&codigoSucursal=${detail.branchId || ""}&scope=external`}
+                href={legacyIncidentDetailHref(runtimeConfig.basePath, "scrAccionesIncidentes", detail.id, detail.branchId)}
               >
                 Ir a Incidente
               </Button>

@@ -8,6 +8,10 @@ export function getCorporateClient(id) {
   return portalApiRequest({ path: `/corporate-clients/${id}` });
 }
 
+export function getCorporateClientContacts(id) {
+  return portalApiRequest({ path: `/corporate-clients/${id}/contacts` });
+}
+
 export function createCorporateClient(payload) {
   return portalApiRequest({ path: "/corporate-clients", method: "POST", body: payload });
 }

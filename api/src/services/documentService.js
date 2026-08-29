@@ -39,6 +39,8 @@ const SORT_FIELDS = new Set([
   "branchName",
   "reference",
   "description",
+  "providerCode",
+  "providerId",
   "providerName",
   "categoryName",
   "subcategoryName",
@@ -64,6 +66,9 @@ function normalizeFilters(query = {}) {
   const page = positiveInteger(query.page) || 1;
   const pageSize = Math.min(positiveInteger(query.pageSize) || 50, 100);
   const search = typeof query.search === "string" ? query.search.trim().slice(0, 200) : "";
+  const surface = ["expiring", "branch-history", "administrative-history"].includes(query.surface)
+    ? query.surface
+    : undefined;
   const sortBy = SORT_FIELDS.has(query.sortBy) ? query.sortBy : undefined;
   const sortDirection = query.sortDirection === "asc" || query.sortDirection === "ascend"
     ? "asc"
@@ -73,12 +78,14 @@ function normalizeFilters(query = {}) {
   return {
     page,
     pageSize,
-    documentType: normalizeDocumentType(query.documentType),
-    includeInactive: query.includeInactive === true || query.includeInactive === "true",
+    surface,
+    documentType: surface === "expiring" ? "all" : normalizeDocumentType(query.documentType),
+    includeInactive: surface === "expiring"
+      || (surface !== "administrative-history" && (query.includeInactive === true || query.includeInactive === "true")),
     branchId: positiveInteger(query.branchId),
     categoryId: positiveInteger(query.categoryId),
     subcategoryId: positiveInteger(query.subcategoryId),
-    statusId: positiveInteger(query.statusId),
+    statusId: surface === "expiring" ? 4 : positiveInteger(query.statusId),
     startDate: normalizedDate(query.startDate),
     endDate: normalizedDate(query.endDate),
     expirationStartDate: normalizedDate(query.expirationStartDate),
@@ -164,10 +171,10 @@ function normalizeDocumentPayload(payload = {}, overrides = {}) {
   const isReferential = parseBoolean(payload.isReferential);
   const documentDate = normalizedDate(payload.documentDate);
   const expirationDate = normalizedDate(payload.expirationDate);
-  if (!documentDate) {
+  if (!isReferential && !documentDate) {
     throw validationError("Ingrese la Fecha de Documento.", "documentDate");
   }
-  if (!expirationDate) {
+  if (!isReferential && !expirationDate) {
     throw validationError("Ingrese la Fecha de vencimiento.", "expirationDate");
   }
 
@@ -184,8 +191,8 @@ function normalizeDocumentPayload(payload = {}, overrides = {}) {
     subcategoryId,
     level,
     isReferential,
-    documentDate,
-    expirationDate,
+    documentDate: documentDate || null,
+    expirationDate: expirationDate || null,
     secondaryReference,
     isActivePrincipal: parseBoolean(overrides.isActivePrincipal ?? payload.isActivePrincipal),
   };
@@ -254,6 +261,23 @@ export function createDocumentService(documentRepository, dependencies = {}) {
       return documentRepository.list(countryCode, normalizeFilters(query));
     },
     catalogs(countryCode, query) {
+      if (query?.surface === "branch-history") {
+        return documentRepository.getHistoryCatalogs(countryCode);
+      }
+      if (query?.surface === "administrative-history") {
+        return documentRepository.getAdministrativeHistoryCatalogs(countryCode);
+      }
+      if (query?.surface === "expiring") {
+        return documentRepository.getExpiringCatalogs(countryCode);
+      }
+      if (query?.surface === "registration") {
+        return documentRepository.getRegistrationCatalogs(countryCode);
+      }
+      if (query?.surface === "registration-subcategories") {
+        const categoryId = positiveInteger(query?.categoryId) || 0;
+        return documentRepository.getRegistrationSubcategories(countryCode, categoryId)
+          .then((subcategories) => ({ subcategories }));
+      }
       return documentRepository.getCatalogs(countryCode, normalizeDocumentType(query?.documentType));
     },
     async get(countryCode, rawId) {
@@ -274,11 +298,13 @@ export function createDocumentService(documentRepository, dependencies = {}) {
     },
     async createBranchDocument(auth, rawBranchId, payload) {
       const branchId = normalizeId(rawBranchId, "branchId", "La sucursal solicitada no es valida.");
+      const replaceActivePrincipal = parseBoolean(payload?.isActivePrincipal);
       const document = normalizeDocumentPayload(payload, {
         branchId,
         documentType: 1,
         isActivePrincipal: true,
       });
+      document.replaceActivePrincipal = replaceActivePrincipal;
       const attachment = await storeAttachment(payload.attachment, {
         module: "DocumentacionLegal",
         table: "tblArchivosDocumentos",
@@ -290,12 +316,15 @@ export function createDocumentService(documentRepository, dependencies = {}) {
     updateReference2(auth, rawId, payload = {}) {
       const documentId = normalizeId(rawId, "id", "El documento solicitado no es valido.");
       const secondaryReference = typeof payload.secondaryReference === "string"
-        ? payload.secondaryReference.trim().slice(0, 516)
+        ? payload.secondaryReference.slice(0, 516)
         : "";
-      return documentRepository.updateReference2(auth.countryCode, auth.id, documentId, secondaryReference);
+      return documentRepository.updateReference2(auth.countryCode, documentId, secondaryReference);
     },
-    approve(auth, rawId) {
+    approve(auth, rawId, payload = {}) {
       const documentId = normalizeId(rawId, "id", "El documento solicitado no es valido.");
+      if (typeof payload.secondaryReference !== "string" || payload.secondaryReference.length === 0) {
+        throw validationError("Referencia 2 es obligatoria.", "secondaryReference");
+      }
       return documentRepository.setStatus(auth.countryCode, auth.id, documentId, 2);
     },
     reject(auth, rawId) {
@@ -314,6 +343,10 @@ export function createDocumentService(documentRepository, dependencies = {}) {
     branch(countryCode, rawBranchId) {
       const branchId = normalizeId(rawBranchId, "branchId", "La sucursal solicitada no es valida.");
       return documentRepository.getBranchDetail(countryCode, branchId);
+    },
+    branchBooks(countryCode, rawBranchId) {
+      const branchId = normalizeId(rawBranchId, "branchId", "La sucursal solicitada no es valida.");
+      return documentRepository.getBranchBooks(countryCode, branchId);
     },
     async addBookEvidence(auth, rawBranchId, rawAssignmentId, payload) {
       const branchId = normalizeId(rawBranchId, "branchId", "La sucursal solicitada no es valida.");

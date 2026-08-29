@@ -13,6 +13,8 @@ async function startCatalogServer(context, auth) {
   const service = {
     listProviders: record("listProviders", { items: [], total: 0, page: 1, pageSize: 10 }),
     listCategories: record("listCategories", { items: [], total: 0, page: 1, pageSize: 10 }),
+    documentCategoryLookups: record("documentCategoryLookups", { branches: [], positions: [] }),
+    entityLookups: record("entityLookups", { entities: [], responsibles: [] }),
     listEntities: record("listEntities", { items: [], total: 0, page: 1, pageSize: 10 }),
     createProvider: record("createProvider", { id: 101 }),
     updateProvider: record("updateProvider", { id: 101 }),
@@ -80,20 +82,23 @@ test("las mutaciones de catalogos no heredan el guard 7/15 de permisos de usuari
   assert.equal(calls[6].args[0], auth);
 });
 
-test("las lecturas de proveedores, categorias y entes conservan el pais de la sesion", async (context) => {
+test("lecturas preservan el país donde el Aggregate lo usa y lookups de entes no lo inventan", async (context) => {
   const auth = { id: 30, countryCode: 17, roleCode: 2, positionCode: 32 };
   const { calls, origin } = await startCatalogServer(context, auth);
 
   const responses = await Promise.all([
     fetch(`${origin}/providers`),
     fetch(`${origin}/document-categories`),
+    fetch(`${origin}/document-categories/lookups`),
     fetch(`${origin}/government-entities`),
+    fetch(`${origin}/government-entities/lookups`),
   ]);
 
-  assert.deepEqual(responses.map((response) => response.status), [200, 200, 200]);
+  assert.deepEqual(responses.map((response) => response.status), [200, 200, 200, 200, 200]);
   assert.deepEqual(
     calls.map((call) => call.operation).sort(),
-    ["listCategories", "listEntities", "listProviders"],
+    ["documentCategoryLookups", "entityLookups", "listCategories", "listEntities", "listProviders"],
   );
-  assert.ok(calls.every((call) => call.args[0] === 17));
+  assert.ok(calls.filter((call) => call.operation !== "entityLookups").every((call) => call.args[0] === 17));
+  assert.deepEqual(calls.find((call) => call.operation === "entityLookups").args, []);
 });

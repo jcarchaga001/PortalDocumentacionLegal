@@ -50,35 +50,7 @@ function normalizeAgreementAttachment(attachment = {}) {
 
 export function normalizeAgreementPayload(payload = {}, { allowExistingAttachments = false } = {}) {
   const clientId = positiveInteger(payload.clientId);
-  if (!clientId) throw validationError("Seleccione el cliente corporativo.", "clientId");
-
-  const startDate = parseDate(payload.startDate);
-  if (!startDate) throw validationError("Ingrese una fecha inicial valida.", "startDate");
-
-  const isIndefinite = parseBoolean(payload.isIndefinite);
-  const endDate = parseDate(payload.endDate);
-  if (!isIndefinite && !endDate) throw validationError("Ingrese la fecha final del convenio.", "endDate");
-  if (!isIndefinite && endDate <= startDate) {
-    throw validationError('La "Fecha Final" debe ser mayor a la "Fecha Inicial".', "endDate");
-  }
-
-  const creditDays = Number(payload.creditDays);
-  if (!Number.isInteger(creditDays) || creditDays < 0 || creditDays > 3650) {
-    throw validationError("Los dias de credito no son validos.", "creditDays");
-  }
-
-  const creditLimit = Number(payload.creditLimit);
-  if (!Number.isFinite(creditLimit) || creditLimit < 0 || creditLimit > 99_999_999_999.99) {
-    throw validationError("El limite de credito no es valido.", "creditLimit");
-  }
-
-  const hasPromissoryNote = parseBoolean(payload.hasPromissoryNote);
-  const isPromissoryNoteExpired = hasPromissoryNote && parseBoolean(payload.isPromissoryNoteExpired);
-  const isPromissoryNoteIndefinite = hasPromissoryNote && parseBoolean(payload.isPromissoryNoteIndefinite);
-  const promissoryNoteExpirationDate = parseDate(payload.promissoryNoteExpirationDate);
-  if (hasPromissoryNote && !isPromissoryNoteIndefinite && !promissoryNoteExpirationDate) {
-    throw validationError("Ingrese la fecha de vencimiento del pagare.", "promissoryNoteExpirationDate");
-  }
+  if (!clientId) throw validationError("Seleccione al Cliente del convenio.", "clientId");
 
   const branchIds = Array.isArray(payload.branchIds)
     ? [...new Set(payload.branchIds.map(positiveInteger).filter(Boolean))]
@@ -89,21 +61,48 @@ export function normalizeAgreementPayload(payload = {}, { allowExistingAttachmen
   const attachments = Array.isArray(payload.attachments)
     ? payload.attachments.map(normalizeAgreementAttachment)
     : [];
+  const accountManagerCode = typeof payload.accountManagerCode === "string"
+    ? payload.accountManagerCode.trim().slice(0, 25)
+    : "";
+  if (!accountManagerCode) {
+    throw validationError("Seleccione al Gestor de la cuenta.", "accountManagerCode");
+  }
+  if (!branchIds.length) {
+    throw validationError("Seleccione al menos 1 sucursal que facture.", "branchIds");
+  }
+
+  const hasPromissoryNote = parseBoolean(payload.hasPromissoryNote);
+  const isPromissoryNoteExpired = hasPromissoryNote && parseBoolean(payload.isPromissoryNoteExpired);
+  const isPromissoryNoteIndefinite = hasPromissoryNote && parseBoolean(payload.isPromissoryNoteIndefinite);
   if (hasPromissoryNote && !allowExistingAttachments && !attachments.length) {
     throw validationError(
       "Afirmo que el cliente tiene pagare, porfavor agregar el archivo.",
       "attachments",
     );
   }
-  const accountManagerCode = typeof payload.accountManagerCode === "string"
-    ? payload.accountManagerCode.trim().slice(0, 25)
-    : "";
-  if (!branchIds.length) {
-    throw validationError("Seleccione al menos 1 sucursal que facture.", "branchIds");
+
+  const startDate = parseDate(payload.startDate);
+  const isIndefinite = parseBoolean(payload.isIndefinite);
+  const endDate = parseDate(payload.endDate);
+  const creditDays = Number(payload.creditDays);
+  const creditLimit = Number(payload.creditLimit);
+  const promissoryNoteExpirationDate = parseDate(payload.promissoryNoteExpirationDate);
+  const invalidMandatory = !startDate
+    || (!isIndefinite && !endDate)
+    || !Number.isInteger(creditDays)
+    || creditDays < 0
+    || creditDays > 3650
+    || !Number.isFinite(creditLimit)
+    || creditLimit < 0
+    || creditLimit > 99_999_999_999.99
+    || (hasPromissoryNote && !isPromissoryNoteIndefinite && !promissoryNoteExpirationDate);
+  if (invalidMandatory) {
+    throw validationError("Hay Campos obligatorios vacíos.", "form");
   }
-  if (!accountManagerCode) {
-    throw validationError("Seleccione al Gestor de la cuenta.", "accountManagerCode");
+  if (!isIndefinite && endDate <= startDate) {
+    throw validationError('La "Fecha Final" debe ser mayor a la "Fecha Inicial".', "endDate");
   }
+
   const observation = typeof payload.observation === "string"
     ? payload.observation.trim().slice(0, 10_000)
     : "";
@@ -133,6 +132,9 @@ export function createAgreementService(agreementRepository) {
     list(countryCode, query) {
       return agreementRepository.list(countryCode, normalizeAgreementFilters(query));
     },
+    clients(countryCode) {
+      return agreementRepository.getClients(countryCode);
+    },
     catalogs(countryCode) {
       return agreementRepository.getCatalogs(countryCode);
     },
@@ -147,6 +149,18 @@ export function createAgreementService(agreementRepository) {
         throw error;
       }
       return agreement;
+    },
+    async contacts(countryCode, rawId) {
+      const agreementId = positiveInteger(rawId);
+      if (!agreementId) throw validationError("El convenio solicitado no es valido.", "id");
+      const contacts = await agreementRepository.getClientContacts(countryCode, agreementId);
+      if (!contacts) {
+        const error = new Error("El convenio solicitado no existe.");
+        error.status = 404;
+        error.code = "AGREEMENT_NOT_FOUND";
+        throw error;
+      }
+      return contacts;
     },
     create(countryCode, userId, payload) {
       return agreementRepository.create(countryCode, userId, normalizeAgreementPayload(payload));

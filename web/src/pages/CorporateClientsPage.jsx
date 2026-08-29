@@ -1,86 +1,217 @@
-import { ContactsOutlined, EditOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
-import { Button, Checkbox, Drawer, Form, Input, List, Space, Table, Tag, message } from "antd";
-import { useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { useHistory } from "react-router-dom";
+import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
 import { ROUTES } from "../routes/routePaths.js";
-import { getCorporateClient, getCorporateClients } from "../services/corporateClientService.js";
+import { getCorporateClients } from "../services/corporateClientService.js";
+import { CorporateClientContactsBlock } from "./CorporateClientContactsBlock.jsx";
+import {
+  CORPORATE_CLIENT_COLUMNS,
+  CORPORATE_CLIENT_EMPTY_TEXT,
+  CORPORATE_CLIENT_PAGE_SIZE,
+  CORPORATE_CLIENT_QUERY_ERROR,
+  corporateClientActiveLabel,
+  corporateClientPaginationPages,
+  corporateClientPaginationSummary,
+} from "./corporateClientsParity.js";
+import "./CorporateClientsPage.css";
 
 export function CorporateClientsPage() {
   const history = useHistory();
-  const [form] = Form.useForm();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
-  const [contactClient, setContactClient] = useState(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [expandedClientIds, setExpandedClientIds] = useState(() => new Set());
+  const [feedback, setFeedback] = useState(null);
 
-  async function load(values = {}, page = 1, pageSize = pagination.pageSize) {
+  const showQueryError = useCallback(() => {
+    setFeedback({ message: CORPORATE_CLIENT_QUERY_ERROR, id: Date.now() });
+  }, []);
+
+  async function loadPage(nextPage) {
     setLoading(true);
-    const result = await getCorporateClients({ ...values, page, pageSize });
-    if (result.success) {
+    const result = await getCorporateClients({
+      page: nextPage,
+      pageSize: CORPORATE_CLIENT_PAGE_SIZE,
+      activeOnly: true,
+    }).catch(() => null);
+
+    if (result?.success) {
       setRows(result.data?.items || []);
-      setPagination({ current: result.data?.page || page, pageSize: result.data?.pageSize || pageSize, total: result.data?.total || 0 });
-    } else message.error(result.message);
+      setPage(result.data?.page || nextPage);
+      setTotal(Number(result.data?.total || 0));
+      setExpandedClientIds(new Set());
+    } else {
+      showQueryError();
+    }
     setLoading(false);
   }
 
-  useEffect(() => { load({}, 1, 20); }, []);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
 
-  async function showContacts(clientId) {
-    const result = await getCorporateClient(clientId);
-    if (result.success) setContactClient(result.data);
-    else message.error(result.message);
+    getCorporateClients({
+      page: 1,
+      pageSize: CORPORATE_CLIENT_PAGE_SIZE,
+      activeOnly: true,
+    }).then((result) => {
+      if (!active) return;
+      if (result.success) {
+        setRows(result.data?.items || []);
+        setPage(result.data?.page || 1);
+        setTotal(Number(result.data?.total || 0));
+      } else {
+        showQueryError();
+      }
+      setLoading(false);
+    }).catch(() => {
+      if (!active) return;
+      showQueryError();
+      setLoading(false);
+    });
+
+    return () => { active = false; };
+  }, []);
+
+  function toggleContacts(clientId) {
+    setExpandedClientIds((current) => {
+      const next = new Set(current);
+      if (next.has(clientId)) next.delete(clientId);
+      else next.add(clientId);
+      return next;
+    });
   }
 
-  const columns = [
-    { title: "Codigo FA", dataIndex: "faCode", key: "faCode", width: 130 },
-    { title: "Nombre Cliente", dataIndex: "name", key: "name", width: 260 },
-    { title: "Nombre Contacto", dataIndex: "contactName", key: "contactName", width: 190 },
-    { title: "Puesto Contacto", dataIndex: "contactPosition", key: "contactPosition", width: 220 },
-    { title: "Teléfono Contacto", dataIndex: "contactPhone", key: "contactPhone", width: 160 },
-    { title: "Correo Contacto", dataIndex: "contactEmail", key: "contactEmail", width: 230 },
-    { title: "Cliente Activo", dataIndex: "isActive", key: "isActive", width: 120, render: (value) => <Tag color={value ? "green" : "default"}>{value ? "Sí" : "No"}</Tag> },
-    {
-      title: "",
-      key: "actions",
-      fixed: "right",
-      width: 150,
-      render: (_, record) => (
-        <Space>
-          <Button type="text" icon={<EditOutlined />} aria-label="Editar cliente" onClick={() => history.push(`${ROUTES.corporateClientCreate}?CodCliente=${record.id}`)} />
-          <Button type="link" icon={<ContactsOutlined />} onClick={() => showContacts(record.id)}>Contactos</Button>
-        </Space>
-      ),
-    },
-  ];
+  const pageNumbers = corporateClientPaginationPages(total);
 
   return (
-    <div className="legacy-list-page">
-      <div className="legacy-list-toolbar">
-        <Button type="link" icon={<UploadOutlined />} onClick={() => history.push(ROUTES.corporateClientBulk)}>Carga de Clientes</Button>
-        <Button type="link" icon={<PlusOutlined />} onClick={() => history.push(ROUTES.corporateClientCreate)}>Crear Cliente</Button>
+    <div className="corporate-clients-page">
+      <LegacyErrorFeedback key={feedback?.id} message={feedback?.message} />
+
+      <div className="corporate-clients-heading-row">
+        <h1 className="content-top-title heading1 ph">Clientes Corporativos</h1>
+        <div className="corporate-clients-toolbar">
+          <button
+            type="button"
+            className="corporate-clients-toolbar-action"
+            onClick={() => history.push(ROUTES.corporateClientBulk)}
+          >
+            Carga de Clientes
+          </button>
+          <span className="corporate-clients-toolbar-separator" aria-hidden="true" />
+          <button
+            type="button"
+            className="corporate-clients-toolbar-action corporate-clients-create-action"
+            onClick={() => history.push(ROUTES.corporateClientCreate)}
+          >
+            <i className="icon fa fa-plus fa-1x" aria-hidden="true" />
+            <span>Crear Cliente</span>
+          </button>
+        </div>
       </div>
-      <h1>Clientes Corporativos</h1>
-      <Form form={form} layout="inline" className="legacy-inline-filters" onValuesChange={(_, values) => load(values, 1, pagination.pageSize)}>
-        <Form.Item label="Búsqueda" name="search"><Input allowClear /></Form.Item>
-        <Form.Item name="activeOnly" valuePropName="checked"><Checkbox>Solo activos</Checkbox></Form.Item>
-      </Form>
-      <Table
-        className="legacy-history-table"
-        rowKey="id"
-        columns={columns}
-        dataSource={rows}
-        loading={loading}
-        scroll={{ x: 1600 }}
-        pagination={{ ...pagination, showSizeChanger: false }}
-        onChange={(next) => load(form.getFieldsValue(), next.current, next.pageSize)}
-      />
-      <Drawer title={contactClient?.name || "Contactos"} open={Boolean(contactClient)} onClose={() => setContactClient(null)} width={560}>
-        <List
-          dataSource={contactClient?.contacts || []}
-          locale={{ emptyText: "No hay contactos adicionales." }}
-          renderItem={(contact) => <List.Item><List.Item.Meta title={contact.name} description={[contact.position, contact.phone, contact.email].filter(Boolean).join(" · ")} /></List.Item>}
-        />
-      </Drawer>
+
+      <div className="corporate-clients-table-overflow">
+        <table className="corporate-clients-table" aria-busy={loading}>
+          <colgroup>
+            {CORPORATE_CLIENT_COLUMNS.map((column) => (
+              <col key={column.key} style={{ width: `${column.width}px` }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              {CORPORATE_CLIENT_COLUMNS.map((column) => (
+                <th key={column.key} scope="col">{column.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {!loading && rows.length === 0 ? (
+              <tr className="corporate-clients-empty-row">
+                <td colSpan={CORPORATE_CLIENT_COLUMNS.length}>{CORPORATE_CLIENT_EMPTY_TEXT}</td>
+              </tr>
+            ) : rows.map((client) => (
+              <Fragment key={client.id}>
+                <tr>
+                  <td>{client.faCode}</td>
+                  <td>{client.name}</td>
+                  <td>{client.contactName}</td>
+                  <td>{client.contactPosition}</td>
+                  <td>{client.contactPhone}</td>
+                  <td>{client.contactEmail}</td>
+                  <td className="corporate-clients-active-cell">{corporateClientActiveLabel(client.isActive)}</td>
+                  <td className="corporate-clients-actions-cell">
+                    <div className="corporate-clients-row-actions">
+                      <button
+                        type="button"
+                        className="corporate-clients-edit-action"
+                        aria-label={`Editar cliente ${client.name}`}
+                        onClick={() => history.push(`${ROUTES.corporateClientCreate}?CodCliente=${client.id}`)}
+                      >
+                        <i className="icon fa fa-pencil-square-o fa-2x" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="corporate-clients-contacts-action"
+                        aria-expanded={expandedClientIds.has(client.id)}
+                        onClick={() => toggleContacts(client.id)}
+                      >
+                        <i
+                          className={`icon fa ${expandedClientIds.has(client.id) ? "fa-chevron-up" : "fa-chevron-down"} fa-1x`}
+                          aria-hidden="true"
+                        />
+                        <span>Contactos</span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {expandedClientIds.has(client.id) ? (
+                  <tr className="corporate-clients-expanded-row">
+                    <td colSpan={CORPORATE_CLIENT_COLUMNS.length}>
+                      <CorporateClientContactsBlock clientId={client.id} onQueryError={showQueryError} />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="corporate-clients-pagination">
+        <span className="corporate-clients-pagination-summary">
+          {corporateClientPaginationSummary(page, total)}
+        </span>
+        <nav className="corporate-clients-pagination-nav" aria-label="Paginación de clientes corporativos">
+          <button
+            type="button"
+            aria-label="Página anterior"
+            disabled={page <= 1}
+            onClick={() => loadPage(page - 1)}
+          >
+            <i className="icon fa fa-angle-left fa-1x" aria-hidden="true" />
+          </button>
+          {pageNumbers.map((pageNumber) => (
+            <button
+              type="button"
+              key={pageNumber}
+              className={pageNumber === page ? "is-active" : ""}
+              aria-current={pageNumber === page ? "page" : undefined}
+              onClick={() => loadPage(pageNumber)}
+            >
+              {pageNumber}
+            </button>
+          ))}
+          <button
+            type="button"
+            aria-label="Página siguiente"
+            disabled={page >= pageNumbers.length}
+            onClick={() => loadPage(page + 1)}
+          >
+            <i className="icon fa fa-angle-right fa-1x" aria-hidden="true" />
+          </button>
+        </nav>
+      </div>
     </div>
   );
 }

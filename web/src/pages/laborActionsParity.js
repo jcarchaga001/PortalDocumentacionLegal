@@ -1,3 +1,8 @@
+import {
+  LEGACY_FILE_MESSAGES,
+  validateLegacyIncidentFileName,
+} from "../config/legacyFileContracts.js";
+
 export const LABOR_ACTION_SCREEN_CONTRACT = Object.freeze({
   sourceName: "srcMisAccionesCasosLaborales",
   pageSize: 50,
@@ -9,7 +14,7 @@ export const LABOR_ACTION_SCREEN_CONTRACT = Object.freeze({
 export const LABOR_ACTION_MESSAGES = Object.freeze({
   incomplete: "Completar los campos",
   evidenceRequired: "Adjuntar documento",
-  invalidEvidence: "La extención del Archivo no es Valido. (Solo permite .PNG o .JPEG y PDF)",
+  invalidEvidence: LEGACY_FILE_MESSAGES.incidentUnsupported,
   updated: "Se ha actualizado el estado",
 });
 
@@ -50,8 +55,7 @@ export function formatLaborActionCloseDate(value) {
 }
 
 export function isAcceptedLaborActionEvidence(fileName) {
-  const extension = String(fileName || "").trim().split(".").pop()?.toLowerCase();
-  return ["png", "jpeg", "jpg", "pdf"].includes(extension);
+  return validateLegacyIncidentFileName(fileName).valid;
 }
 
 export function actionHistoryFor(detail, actionId) {

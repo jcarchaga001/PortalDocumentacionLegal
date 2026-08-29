@@ -33,6 +33,12 @@ const RECOVERY_QUERY = `
   LIMIT 2
 `;
 
+const UPDATE_CREDENTIAL_QUERY = `
+  UPDATE tblPersonas
+  SET Credencial = ?, isResetear = ?
+  WHERE Codigo_Personas = ?
+`;
+
 export function createPersonRepository(pool = getDatabasePool()) {
   return {
     async findActiveByCredentials({ email, credential, countryCode }) {
@@ -46,15 +52,14 @@ export function createPersonRepository(pool = getDatabasePool()) {
     },
 
     async updateCredential({ personId, credential, mustResetPassword }) {
-      const [result] = await pool.execute(
-        `UPDATE tblPersonas
-         SET Credencial = ?, isResetear = ?
-         WHERE Codigo_Personas = ? AND isActivo = 1`,
-        [credential, mustResetPassword ? 1 : 0, personId],
-      );
+      const [result] = await pool.execute(UPDATE_CREDENTIAL_QUERY, [
+        credential,
+        mustResetPassword ? 1 : 0,
+        personId,
+      ]);
       return result.affectedRows === 1;
     },
   };
 }
 
-export { AUTHENTICATION_QUERY, RECOVERY_QUERY };
+export { AUTHENTICATION_QUERY, RECOVERY_QUERY, UPDATE_CREDENTIAL_QUERY };

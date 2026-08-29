@@ -372,7 +372,6 @@ export function LaborActionsPage() {
               {includeEvidence && (
                 <Form.Item name="evidence" label="Evidencia">
                   <Upload
-                    accept=".png,.jpeg,.jpg,.pdf"
                     beforeUpload={acceptEvidence}
                     maxCount={1}
                     onRemove={() => setOperationFile(null)}

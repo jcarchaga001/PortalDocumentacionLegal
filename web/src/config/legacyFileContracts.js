@@ -1,5 +1,6 @@
 const DOCUMENT_EXTENSIONS = Object.freeze(["pdf", "jpg", "jpeg", "png", "bmp"]);
 const INCIDENT_EXTENSIONS = Object.freeze(["png", "jpeg", "jpg", "pdf"]);
+const INCIDENT_COMMENT_EXTENSIONS = Object.freeze(["png", "jpeg", "jpg"]);
 const AGREEMENT_EXTENSIONS = Object.freeze([
   ".pdf",
   ".jpeg",
@@ -77,6 +78,18 @@ export function validateLegacyIncidentFileName(fileName, { legal = false } = {})
   };
 }
 
+export function validateLegacyIncidentCommentFileName(fileName, { legal = false } = {}) {
+  const valid = INCIDENT_COMMENT_EXTENSIONS.includes(fileExtension(fileName));
+  return {
+    valid,
+    message: valid
+      ? ""
+      : legal
+        ? LEGACY_FILE_MESSAGES.legalCommentUnsupported
+        : LEGACY_FILE_MESSAGES.commentUnsupported,
+  };
+}
+
 export function legacyAgreementStoredExtension(fileName) {
   const normalized = String(fileName || "");
   const dot = normalized.indexOf(".");
@@ -99,4 +112,4 @@ export function validateLegacyAgreementCandidate(file, currentFileCount = 0) {
 
 export const LEGACY_DOCUMENT_EXTENSIONS = DOCUMENT_EXTENSIONS;
 export const LEGACY_INCIDENT_EXTENSIONS = INCIDENT_EXTENSIONS;
-
+export const LEGACY_INCIDENT_COMMENT_EXTENSIONS = INCIDENT_COMMENT_EXTENSIONS;

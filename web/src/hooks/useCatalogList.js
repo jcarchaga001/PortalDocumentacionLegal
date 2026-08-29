@@ -6,7 +6,7 @@ export function useCatalogList(loadData, initialFilters = {}) {
   const [filters, setFilterState] = useState(() => ({
     ...initialFiltersRef.current,
     page: 1,
-    pageSize: 20,
+    pageSize: initialFiltersRef.current.pageSize || 20,
   }));
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,8 +38,12 @@ export function useCatalogList(loadData, initialFilters = {}) {
     };
   }, [filters, loadData, revision]);
 
-  const setFilters = useCallback((values) => {
-    setFilterState((current) => ({ ...current, ...values, page: 1 }));
+  const setFilters = useCallback((values, { resetPage = true } = {}) => {
+    setFilterState((current) => ({
+      ...current,
+      ...values,
+      ...(resetPage ? { page: 1 } : {}),
+    }));
   }, []);
 
   const changeTable = useCallback((pagination, _tableFilters, sorter) => {

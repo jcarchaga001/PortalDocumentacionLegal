@@ -25,6 +25,18 @@
   background: #dc2020;
 }
 
+.legacy-feedback-message.feedback-message-success {
+  background: #29823b;
+}
+
+.legacy-feedback-message.feedback-message-info {
+  background: #017aad;
+}
+
+.legacy-feedback-message.feedback-message-warning {
+  background: #e9a100;
+}
+
 .legacy-feedback-message.feedback-message .fa {
   flex: 0 0 auto;
   width: 17.156px;

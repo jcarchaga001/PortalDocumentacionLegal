@@ -5,6 +5,7 @@
  */
 export function buildLegacyBranchHistoryFilters(values = {}) {
   return {
+    surface: "branch-history",
     branchId: values.branchId,
     categoryId: values.categoryId,
     subcategoryId: values.subcategoryId,

@@ -8,6 +8,7 @@ import {
 import { Button, Form, Input, Select, Tag } from "antd";
 import { LegacyDateRangePicker } from "../components/LegacyDateRangePicker.jsx";
 import "../styles/incidents.css";
+import { incidentStatusColor } from "./incidentStatusParity.js";
 export { localIsoDate, localMonthStartIso } from "../utils/dateRange.js";
 
 export function options(items) {
@@ -15,8 +16,7 @@ export function options(items) {
 }
 
 export function StatusTag({ id, name }) {
-  const colors = { 1: "blue", 2: "orange", 4: "gold", 5: "green", 6: "red", 7: "red", 8: "gold", 10: "purple" };
-  return <Tag color={colors[Number(id)] || "default"}>{name || "—"}</Tag>;
+  return <Tag color={incidentStatusColor(id)}>{name || "—"}</Tag>;
 }
 
 export function DateRangeField({

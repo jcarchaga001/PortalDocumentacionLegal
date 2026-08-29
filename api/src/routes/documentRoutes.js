@@ -8,6 +8,7 @@ export function createDocumentRouter(documentService) {
   const requireDocumentDelete = createRequireAuthorization({ positionCodes: [7, 32] });
   router.get("/catalogs", controller.catalogs);
   router.get("/branches/:branchId", controller.branch);
+  router.get("/branches/:branchId/books", controller.branchBooks);
   router.post("/branches/:branchId/documents", controller.createBranchDocument);
   router.post("/branches/:branchId/books/:assignmentId/evidence", controller.addBookEvidence);
   router.patch("/branches/:branchId/books/:assignmentId", controller.updateBookRequired);

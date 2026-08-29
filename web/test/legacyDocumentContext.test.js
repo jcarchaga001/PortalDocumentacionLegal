@@ -7,13 +7,16 @@ import {
   DOCUMENT_TYPE_STORAGE_KEY,
   LEGACY_CONTEXT_COUNTRY_STORAGE_KEY,
   LEGACY_SELECTED_BRANCH_STORAGE_KEY,
+  LEGACY_SELECTED_DOCUMENT_STORAGE_KEY,
   readLegacyContextCountryCode,
   readLegacyDocumentType,
   readLegacySelectedBranchId,
+  readLegacySelectedDocumentId,
   resetLegacyDocumentContextForLogin,
   restoreLegacyDocumentContextForCountry,
   writeLegacyDocumentType,
   writeLegacySelectedBranchId,
+  writeLegacySelectedDocumentId,
 } from "../src/config/legacyDocumentContext.js";
 
 function createStorage(initialValues = {}) {
@@ -62,6 +65,16 @@ test("conserva SucursalSelected como variable cliente entre navegaciones", () =>
   assert.equal(readLegacySelectedBranchId(storage), 223);
 });
 
+test("conserva IdRegistro como variable cliente sin exponerlo en la URL", () => {
+  const storage = createStorage();
+
+  assert.equal(writeLegacySelectedDocumentId(913, storage), 913);
+  assert.equal(readLegacySelectedDocumentId(storage), 913);
+  assert.equal(writeLegacySelectedDocumentId("51", storage), 51);
+  assert.equal(readLegacySelectedDocumentId(storage), 51);
+  assert.equal(writeLegacySelectedDocumentId(0, storage), undefined);
+});
+
 test("no inventa SucursalSelected cuando falta o no es un entero positivo", () => {
   assert.equal(readLegacySelectedBranchId(createStorage()), undefined);
   assert.equal(
@@ -83,6 +96,7 @@ test("la restauracion de la misma sesion conserva SucursalSelected", () => {
   const storage = createStorage({
     [LEGACY_CONTEXT_COUNTRY_STORAGE_KEY]: "4",
     [LEGACY_SELECTED_BRANCH_STORAGE_KEY]: "226",
+    [LEGACY_SELECTED_DOCUMENT_STORAGE_KEY]: "913",
     [DOCUMENT_TYPE_STORAGE_KEY]: "2",
   });
 
@@ -92,6 +106,7 @@ test("la restauracion de la misma sesion conserva SucursalSelected", () => {
     countryChanged: false,
   });
   assert.equal(readLegacySelectedBranchId(storage), 226);
+  assert.equal(readLegacySelectedDocumentId(storage), 913);
   assert.equal(readLegacyDocumentType(storage), 2);
 });
 
@@ -125,6 +140,7 @@ test("una sesion restaurada de otro pais limpia el contexto cliente", () => {
   });
   assert.equal(readLegacyContextCountryCode(storage), 5);
   assert.equal(readLegacySelectedBranchId(storage), undefined);
+  assert.equal(readLegacySelectedDocumentId(storage), undefined);
   assert.equal(readLegacyDocumentType(storage), undefined);
 });
 
@@ -132,12 +148,14 @@ test("un login explicito limpia el contexto aunque conserve el mismo pais", () =
   const storage = createStorage({
     [LEGACY_CONTEXT_COUNTRY_STORAGE_KEY]: "4",
     [LEGACY_SELECTED_BRANCH_STORAGE_KEY]: "226",
+    [LEGACY_SELECTED_DOCUMENT_STORAGE_KEY]: "913",
     [DOCUMENT_TYPE_STORAGE_KEY]: "2",
   });
 
   assert.equal(resetLegacyDocumentContextForLogin(4, storage), 4);
   assert.equal(readLegacyContextCountryCode(storage), 4);
   assert.equal(readLegacySelectedBranchId(storage), undefined);
+  assert.equal(readLegacySelectedDocumentId(storage), undefined);
   assert.equal(readLegacyDocumentType(storage), undefined);
 });
 
@@ -145,12 +163,14 @@ test("logout limpia tambien el pais que era propietario del contexto", () => {
   const storage = createStorage({
     [LEGACY_CONTEXT_COUNTRY_STORAGE_KEY]: "4",
     [LEGACY_SELECTED_BRANCH_STORAGE_KEY]: "226",
+    [LEGACY_SELECTED_DOCUMENT_STORAGE_KEY]: "913",
     [DOCUMENT_TYPE_STORAGE_KEY]: "2",
   });
 
   assert.equal(clearLegacyDocumentContext(storage), true);
   assert.equal(readLegacyContextCountryCode(storage), undefined);
   assert.equal(readLegacySelectedBranchId(storage), undefined);
+  assert.equal(readLegacySelectedDocumentId(storage), undefined);
   assert.equal(readLegacyDocumentType(storage), undefined);
 });
 

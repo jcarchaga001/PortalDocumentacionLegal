@@ -55,63 +55,76 @@ function normalizeSort(value, allowed, fallback) {
 
 export function normalizeUserFilters(query = {}) {
   return {
-    ...normalizePage(query),
+    page: positiveInteger(query.page) || 1,
+    pageSize: Math.min(positiveInteger(query.pageSize) || 500, 500),
     branchId: positiveInteger(query.branchId),
     positionId: positiveInteger(query.positionId),
     search: text(query.search),
     onlyAllowed: optionalBoolean(query.onlyAllowed) === true,
-    sortBy: normalizeSort(query.sortBy, ["id", "name", "position", "email"], "name"),
+    // GetPersonas has a fixed AttributeSort by Nombre_Personas.  The legacy
+    // table renders sortable affordances, but its OnSort action is orphaned.
+    sortBy: "name",
+    sortOrder: "asc",
   };
 }
 
 export function normalizeProviderFilters(query = {}) {
+  const pagination = normalizePage(query);
   return {
-    ...normalizePage(query),
+    ...pagination,
+    pageSize: Math.min(positiveInteger(query.pageSize) || 500, 500),
     name: text(query.name, 512),
     taxNumber: text(query.taxNumber, 64),
     onlyExternal: query.onlyExternal === undefined ? true : optionalBoolean(query.onlyExternal) === true,
     onlyActive: query.onlyActive === undefined ? true : optionalBoolean(query.onlyActive) === true,
-    sortBy: normalizeSort(query.sortBy, ["commercialName", "legalName", "taxNumber", "type", "active"], "commercialName"),
+    sortBy: normalizeSort(query.sortBy, ["commercialName", "legalName", "taxNumber", "active"], undefined),
   };
 }
 
 export function normalizeCategoryFilters(query = {}) {
   return {
     ...normalizePage(query),
+    pageSize: 500,
     categoryId: positiveInteger(query.categoryId),
     search: text(query.search),
     onlyRequired: optionalBoolean(query.onlyRequired) === true,
     onlyDocuments: optionalBoolean(query.onlyDocuments) === true,
     onlyActive: optionalBoolean(query.onlyActive) === true,
-    sortBy: normalizeSort(query.sortBy, ["category", "subcategory", "required", "document", "active"], "category"),
+    sortBy: undefined,
   };
 }
 
 export function normalizeEntityFilters(query = {}) {
   const area = query.area === "legal" || query.area === "regulatory" ? query.area : undefined;
   return {
-    ...normalizePage(query),
+    page: positiveInteger(query.page) || 1,
+    // StartIndex belongs to the Pagination widget, but the legacy refresh of
+    // GetTblEntesGubernamentaleXFiltro always sends StartIndex=0.  The widget
+    // itself is configured with MaxRecords=500 while the Aggregate is capped
+    // at 50 rows.
+    pageSize: 500,
     entityId: positiveInteger(query.entityId),
     responsibleId: positiveInteger(query.responsibleId),
     area,
-    sortBy: normalizeSort(query.sortBy, ["name", "description", "responsible", "area"], "name"),
+    sortBy: undefined,
+    sortOrder: "asc",
   };
 }
 
 export function normalizeLegalActionFilters(query = {}) {
+  const pagination = normalizePage(query);
   return {
-    ...normalizePage(query),
-    search: text(query.search, 250),
-    onlyActive: optionalBoolean(query.onlyActive) === true,
-    sortBy: normalizeSort(query.sortBy, ["name", "createdAt", "createdBy", "active"], "name"),
+    ...pagination,
+    pageSize: Math.min(positiveInteger(query.pageSize) || 50, 50),
+    sortBy: normalizeSort(query.sortBy, ["name", "createdAt", "createdBy"], undefined),
   };
 }
 
 function normalizeProvider(body = {}) {
   const internal = requiredBoolean(body.internal, "internal");
   return {
-    commercialName: requiredText(body.commercialName, "commercialName", 512),
-    legalName: text(body.legalName, 512) || null,
+    commercialName: text(body.commercialName, 512),
+    legalName: text(body.legalName, 512),
     taxNumber: requiredText(body.taxNumber, "taxNumber", 64),
     active: requiredBoolean(body.active, "active"),
     withholdingOne: requiredBoolean(body.withholdingOne, "withholdingOne"),
@@ -121,25 +134,44 @@ function normalizeProvider(body = {}) {
   };
 }
 
-function normalizeEntity(body = {}) {
-  const area = body.area;
-  if (area !== "legal" && area !== "regulatory") {
-    throw new CatalogValidationError("Seleccione el área encargada.", "area");
-  }
+function normalizeEntityCreate(body = {}) {
   return {
-    name: requiredText(body.name, "name", 128),
-    description: text(body.description, 2_000) || null,
-    responsibleId: requiredId(body.responsibleId, "responsibleId"),
-    legal: area === "legal",
-    regulatory: area === "regulatory",
+    // Both inputs have Mandatory=False.  The two popup DropdownSearch client
+    // handlers are no-ops, so a create ignores their visible selections.
+    name: typeof body.name === "string" ? body.name.slice(0, 128) : "",
+    description: typeof body.description === "string" ? body.description.slice(0, 65_535) : "",
+    responsibleId: 0,
+    legal: false,
+    regulatory: false,
+  };
+}
+
+function normalizeEntityUpdate(body = {}) {
+  const responsibleId = Number(body.responsibleId);
+  return {
+    name: typeof body.name === "string" ? body.name.slice(0, 128) : "",
+    description: typeof body.description === "string" ? body.description.slice(0, 65_535) : "",
+    responsibleId: Number.isInteger(responsibleId) && responsibleId >= 0 ? responsibleId : 0,
+    legal: optionalBoolean(body.legal) === true,
+    regulatory: optionalBoolean(body.regulatory) === true,
   };
 }
 
 function normalizeLegalAction(body = {}) {
   return {
-    name: requiredText(body.name, "name", 250),
+    // El Input legacy tiene Mandatory=False: incluso una cadena vacía llega al
+    // Create/Update de la entidad. No normalizar ni recortar espacios aquí.
+    name: typeof body.name === "string" ? body.name.slice(0, 250) : "",
     active: requiredBoolean(body.active, "active"),
   };
+}
+
+function legalActionId(value) {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id < 0) {
+    throw new CatalogValidationError("El identificador no es válido.", "id");
+  }
+  return id;
 }
 
 function mysqlTimestamp(date) {
@@ -154,6 +186,14 @@ export function createCatalogService(repository, { now = () => new Date() } = {}
   return {
     lookups(countryCode) {
       return repository.getLookups(countryCode);
+    },
+
+    userPermissionLookups(countryCode) {
+      return repository.getUserPermissionLookups(countryCode);
+    },
+
+    documentCategoryLookups(countryCode) {
+      return repository.getDocumentCategoryLookups(countryCode);
     },
 
     listUsers(countryCode, query) {
@@ -177,6 +217,10 @@ export function createCatalogService(repository, { now = () => new Date() } = {}
 
     listProviders(countryCode, query) {
       return repository.listProviders(countryCode, normalizeProviderFilters(query));
+    },
+
+    listProviderBranches(countryCode) {
+      return repository.listProviderBranches(countryCode);
     },
 
     listProviderDestinations(countryCode, providerIdValue) {
@@ -233,43 +277,49 @@ export function createCatalogService(repository, { now = () => new Date() } = {}
         description: allowed ? "Habilitó Subcategoría" : "Deshabilitó Subcategoría",
         timestamp: mysqlTimestamp(now()),
       });
-      if (!updated) notFound("La subcategoría solicitada no existe.");
+      if (!updated) notFound("El registro solicitado no existe.");
       return { id: categoryId, accessAllowed: allowed };
     },
 
-    listEntities(countryCode, query) {
-      return repository.listEntities(countryCode, normalizeEntityFilters(query));
+    entityLookups() {
+      return repository.getGovernmentEntityLookups();
+    },
+
+    listEntities(_countryCode, query) {
+      return repository.listEntities(normalizeEntityFilters(query));
     },
 
     async createEntity(auth, body) {
-      const entity = normalizeEntity(body);
-      if (!await repository.isActivePersonInCountry(auth.countryCode, entity.responsibleId)) {
-        notFound("El responsable solicitado no existe.");
-      }
+      const entity = normalizeEntityCreate(body);
       const id = await repository.createEntity(auth.countryCode, auth.id, entity);
       return { id, ...entity, responsibleId: auth.id };
     },
 
-    async updateEntity(auth, entityIdValue, body) {
+    async updateEntity(_auth, entityIdValue, body) {
       const entityId = requiredId(entityIdValue, "id");
-      const entity = normalizeEntity(body);
-      if (!await repository.isActivePersonInCountry(auth.countryCode, entity.responsibleId)) {
-        notFound("El responsable solicitado no existe.");
-      }
-      const updated = await repository.updateEntity(auth.countryCode, entityId, entity);
+      const entity = normalizeEntityUpdate(body);
+      const updated = await repository.updateEntity(entityId, entity);
       if (!updated) notFound("El ente gubernamental solicitado no existe.");
       return { id: entityId, ...entity };
     },
 
-    async deactivateEntity(auth, entityIdValue) {
+    async deactivateEntity(_auth, entityIdValue) {
       const entityId = requiredId(entityIdValue, "id");
-      const updated = await repository.deactivateEntity(auth.countryCode, entityId);
+      const updated = await repository.deactivateEntity(entityId);
       if (!updated) notFound("El ente gubernamental solicitado no existe.");
       return { id: entityId, active: false };
     },
 
     listLegalActions(query) {
       return repository.listLegalActions(normalizeLegalActionFilters(query));
+    },
+
+    async getLegalAction(actionIdValue) {
+      const actionId = legalActionId(actionIdValue);
+      const action = await repository.getLegalAction(actionId);
+      // GetTblAccionesLegalByCodAccion expone el registro por defecto cuando el
+      // Aggregate con CodAccion=0 no encuentra filas (apertura de alta).
+      return action || { id: actionId, name: "", active: false };
     },
 
     async createLegalAction(auth, body) {
@@ -281,6 +331,8 @@ export function createCatalogService(repository, { now = () => new Date() } = {}
     async updateLegalAction(actionIdValue, body) {
       const actionId = requiredId(actionIdValue, "id");
       const action = normalizeLegalAction(body);
+      const current = await repository.getLegalAction(actionId);
+      if (!current) notFound("La acción legal solicitada no existe.");
       const updated = await repository.updateLegalAction(actionId, action);
       if (!updated) notFound("La acción legal solicitada no existe.");
       return { id: actionId, ...action };

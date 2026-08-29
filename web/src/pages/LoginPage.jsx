@@ -1,21 +1,22 @@
-import { App, Button, Form, Input, Select } from "antd";
+import { Button, Form, Input, Select } from "antd";
 import { useEffect, useState } from "react";
 import { useHistory, useLocation } from "react-router-dom";
+import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
 import { useAuth } from "../config/AuthContext.jsx";
 import { runtimeConfig } from "../config/runtime.js";
 import { ROUTES } from "../routes/routePaths.js";
 import { getCountries } from "../services/authService.js";
 import { requestPasswordRecovery } from "../services/authService.js";
+import { legacyLoginCountries, LOGIN_FEEDBACK } from "./loginParity.js";
 
 export function LoginPage() {
-  const { message } = App.useApp();
   const history = useHistory();
   const location = useLocation();
   const { signIn } = useAuth();
   const [form] = Form.useForm();
   const [countries, setCountries] = useState([]);
-  const [countriesLoading, setCountriesLoading] = useState(true);
-  const [countriesError, setCountriesError] = useState("");
+  const [countrySearch, setCountrySearch] = useState("");
+  const [feedback, setFeedback] = useState({ message: "", type: "error" });
   const [submitting, setSubmitting] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [recoveryType, setRecoveryType] = useState("usuario");
@@ -26,41 +27,31 @@ export function LoginPage() {
   useEffect(() => {
     let active = true;
     setCountries([]);
-    setCountriesError("");
-    setCountriesLoading(true);
     getCountries()
       .then((result) => {
         if (!active) return;
         if (!result.success) {
-          setCountriesError(result.message || "No fue posible cargar los países disponibles.");
+          setFeedback({ message: LOGIN_FEEDBACK.queryError, type: "error" });
           return;
         }
-        if (!Array.isArray(result.data) || result.data.length === 0) {
-          setCountriesError("No hay países disponibles para iniciar sesión.");
-          return;
-        }
-        setCountries(result.data);
+        setCountries(legacyLoginCountries(result.data));
       })
       .catch(() => {
-        if (active) setCountriesError("No fue posible cargar los países disponibles.");
-      })
-      .finally(() => {
-        if (active) setCountriesLoading(false);
+        if (active) setFeedback({ message: LOGIN_FEEDBACK.queryError, type: "error" });
       });
     return () => {
       active = false;
     };
   }, []);
 
-  const countriesReady = !countriesLoading && !countriesError && countries.length > 0;
+  const visibleCountries = countries.filter((country) => (
+    !countrySearch || country.name?.toLocaleLowerCase().includes(countrySearch.toLocaleLowerCase())
+  ));
 
   async function handleSubmit(values) {
-    if (!countriesReady) {
-      message.error(countriesError || "Espere mientras se cargan los países disponibles.");
-      return;
-    }
+    setFeedback({ message: "", type: "error" });
     if (!values.countryCode) {
-      message.error("Debe Seleccionar País");
+      setFeedback({ message: LOGIN_FEEDBACK.countryRequired, type: "error" });
       return;
     }
     setSubmitting(true);
@@ -68,7 +59,7 @@ export function LoginPage() {
     setSubmitting(false);
 
     if (!result.success) {
-      message.error(result.message || "No fue posible iniciar sesión.");
+      setFeedback({ message: result.message || LOGIN_FEEDBACK.invalidCredentials, type: "error" });
       return;
     }
 
@@ -81,13 +72,10 @@ export function LoginPage() {
   }
 
   async function handleRecovery() {
-    if (!countriesReady) {
-      message.error(countriesError || "Espere mientras se cargan los países disponibles.");
-      return;
-    }
+    setFeedback({ message: "", type: "error" });
     const countryCode = form.getFieldValue("countryCode");
     if (!countryCode) {
-      message.error("Debe Seleccionar País");
+      setFeedback({ message: "Credenciales Incorrectas", type: "error" });
       return;
     }
     setRecoverySubmitting(true);
@@ -99,10 +87,10 @@ export function LoginPage() {
     });
     setRecoverySubmitting(false);
     if (!result.success) {
-      message.error(result.message || "No fue posible recuperar la clave.");
+      setFeedback({ message: result.message || "Credenciales Incorrectas", type: "error" });
       return;
     }
-    message.success(result.message);
+    setFeedback({ message: result.message || LOGIN_FEEDBACK.recoverySuccess, type: "success" });
     setForgotOpen(false);
     setRecoveryUser("");
     setRecoveryAlias("");
@@ -110,6 +98,7 @@ export function LoginPage() {
 
   return (
     <>
+      <LegacyErrorFeedback message={feedback.message} type={feedback.type} />
       <main
         className="login-screen"
         style={{ "--login-background": `url(${runtimeConfig.basePath}/brand/login-background.jpg)` }}
@@ -120,7 +109,9 @@ export function LoginPage() {
           requiredMark={false}
           onFinish={handleSubmit}
           onFinishFailed={({ values }) => {
-            if (!values.countryCode) message.error("Debe Seleccionar País");
+            if (!values.countryCode) {
+              setFeedback({ message: LOGIN_FEEDBACK.countryRequired, type: "error" });
+            }
           }}
           className="login-form"
         >
@@ -135,57 +126,66 @@ export function LoginPage() {
               <Select
                 placeholder="Seleccione País"
                 allowClear
-                loading={countriesLoading}
-                disabled={!countriesReady}
-                options={countries.map((country) => ({
+                popupClassName="legacy-country-dropdown"
+                popupRender={(menu) => (
+                  <>
+                    <div
+                      className="legacy-country-popup-search"
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      <i className="fa fa-search" aria-hidden="true" />
+                      <input
+                        aria-label="Buscar país"
+                        placeholder="Search..."
+                        value={countrySearch}
+                        onChange={(event) => setCountrySearch(event.target.value)}
+                      />
+                    </div>
+                    {menu}
+                  </>
+                )}
+                options={visibleCountries.map((country) => ({
                   value: country.countryCode,
                   label: country.name,
                 }))}
               />
             </Form.Item>
 
-            {(countriesLoading || countriesError) && (
-              <div
-                className={`legacy-country-catalog-status${countriesError ? " is-error" : ""}`}
-                role={countriesError ? "alert" : "status"}
-              >
-                {countriesError || "Cargando países..."}
-              </div>
-            )}
-
             <Form.Item
               label={<span>Usuario <b>*</b></span>}
               name="username"
-              rules={[{ required: true, message: "Campo Obligatorio" }]}
+              rules={[{ required: true, message: LOGIN_FEEDBACK.requiredField }]}
             >
-              <Input autoComplete="username" />
+              <Input maxLength={250} required />
             </Form.Item>
 
             <Form.Item
               label={<span>Clave <b>*</b></span>}
               name="password"
-              rules={[{ required: true, message: "Campo Obligatorio" }]}
+              rules={[{ required: true, message: LOGIN_FEEDBACK.requiredField }]}
             >
-              <Input type="password" autoComplete="current-password" />
+              <Input type="password" required />
             </Form.Item>
 
             <div className="legacy-forgot-row">
-              <button
+              <a
                 className="legacy-forgot-link"
-                type="button"
+                href="#"
                 title="¿Olvido su contraseña?  Registre nuevamente"
-                disabled={!countriesReady}
-                onClick={() => setForgotOpen(true)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setForgotOpen(true);
+                }}
               >
                 Olvidé Contraseña
-              </button>
+              </a>
             </div>
 
             <Button
               type="primary"
-              htmlType="submit"
+              htmlType="button"
               loading={submitting}
-              disabled={!countriesReady}
+              onClick={() => form.submit()}
               block
             >
               Ingresar
@@ -205,14 +205,14 @@ export function LoginPage() {
             <div className="legacy-recovery-card">
               <div className="legacy-recovery-content">
                 <div className="legacy-recovery-heading">
-                  <span className="legacy-recovery-icon" aria-hidden="true">!</span>
+                  <i className="fa fa-exclamation-circle legacy-recovery-icon" aria-hidden="true" />
                   <span>Ingrese las credenciales</span>
                 </div>
 
                 <label className="legacy-recovery-country">País</label>
 
                 <div className="legacy-recovery-primary legacy-recovery-field">
-                  <label>{recoveryType === "usuario" ? "Usuario" : "Correo Electrónico"}</label>
+                  <label>{recoveryType === "usuario" ? "Usuario" : "Correo Electrónico"}<b>*</b></label>
                   <div className={`legacy-recovery-input-row ${recoveryType === "correo" ? "has-gutter" : ""}`}>
                     <input
                       type="text"
@@ -221,7 +221,7 @@ export function LoginPage() {
                       value={recoveryUser}
                       onChange={(event) => setRecoveryUser(event.target.value)}
                     />
-                    {recoveryType === "correo" && <input type="text" value="@farmavalue.com" disabled required aria-label="Dominio" />}
+                    {recoveryType === "correo" && <input type="text" value="@farmavalue.com" maxLength={250} disabled required aria-label="Dominio" />}
                   </div>
                 </div>
 
@@ -249,7 +249,7 @@ export function LoginPage() {
 
                 {recoveryType === "usuario" && (
                   <div className="legacy-recovery-secondary legacy-recovery-field">
-                    <label>Debe Ingresar un Correo</label>
+                    <label>Debe Ingresar un Correo<b>*</b></label>
                     <div className="legacy-recovery-input-row is-adjacent">
                       <input
                         type="text"
@@ -258,7 +258,7 @@ export function LoginPage() {
                         value={recoveryAlias}
                         onChange={(event) => setRecoveryAlias(event.target.value)}
                       />
-                      <input type="text" value="@farmavalue.com" disabled required aria-label="Dominio" />
+                      <input type="text" value="@farmavalue.com" maxLength={250} disabled required aria-label="Dominio" />
                     </div>
                   </div>
                 )}

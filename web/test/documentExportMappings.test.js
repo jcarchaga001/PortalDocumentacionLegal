@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ADMINISTRATIVE_DOCUMENT_EXPORT_COLUMNS,
+  BRANCH_DOCUMENT_EXPORT_COLUMNS,
   EXPIRING_DOCUMENT_EXPORT_COLUMNS,
   LEGACY_DOCUMENT_EXPORT_COLUMN_ORDER,
   mapDocumentExportRow,
@@ -23,6 +24,10 @@ const sample = Object.freeze({
 
 test("ambas exportaciones conservan el orden exacto de RecordListToExcel1", () => {
   assert.deepEqual(
+    BRANCH_DOCUMENT_EXPORT_COLUMNS.map(({ title }) => title),
+    LEGACY_DOCUMENT_EXPORT_COLUMN_ORDER,
+  );
+  assert.deepEqual(
     ADMINISTRATIVE_DOCUMENT_EXPORT_COLUMNS.map(({ title }) => title),
     LEGACY_DOCUMENT_EXPORT_COLUMN_ORDER,
   );
@@ -30,6 +35,22 @@ test("ambas exportaciones conservan el orden exacto de RecordListToExcel1", () =
     EXPIRING_DOCUMENT_EXPORT_COLUMNS.map(({ title }) => title),
     LEGACY_DOCUMENT_EXPORT_COLUMN_ORDER,
   );
+});
+
+test("scrHistoricoDocumentos completa los once SourceValue del OML", () => {
+  assert.deepEqual(mapDocumentExportRow(BRANCH_DOCUMENT_EXPORT_COLUMNS, sample), {
+    codInternoSucursal: "FA00",
+    estado: "Por Vencer",
+    fechaContrato: "2026-01-10",
+    Categoria: "Contratos",
+    sucursal: "Administracion",
+    Proveedor: "Proveedor Legacy",
+    nivelDocumento: "Confidencial",
+    numRefencia: "CTR-42",
+    fechaVencimiento: "2026-11-20",
+    usuarioCreacion: "Persona Legacy",
+    numContrato: "Contrato 42",
+  });
 });
 
 test("scrHistoricoAdministrativoDoc conserva los SourceValue vacios del OML", () => {

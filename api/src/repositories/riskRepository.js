@@ -95,12 +95,10 @@ export function createRiskRepository(pool) {
           SELECT CodSociedad AS id, NombreSociedad AS name
           FROM ${databases.risk}.tblSociedades_
           WHERE CodPais = ?
-          ORDER BY NombreSociedad, CodSociedad
         `, [countryCode]),
         databasePool.execute(`
           SELECT CodEstadosArchivos AS id, NombreEstado AS name
           FROM ${databases.risk}.tblEstadosArchivos_Doc
-          ORDER BY CodEstadosArchivos
         `),
       ]);
       return {

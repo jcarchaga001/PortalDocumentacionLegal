@@ -18,6 +18,14 @@ export function createCorporateClientController(service) {
         next(error);
       }
     },
+    async contacts(req, res, next) {
+      try {
+        const data = await service.contacts(req.auth.countryCode, req.params.id);
+        res.json(normalizedSuccess("Contactos corporativos consultados correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
     async create(req, res, next) {
       try {
         const data = await service.create(req.auth.countryCode, req.auth.id, req.body);

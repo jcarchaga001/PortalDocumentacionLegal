@@ -2,10 +2,10 @@ import { ROUTES } from "../routes/routePaths.js";
 
 export const LANDING_SHORTCUTS = Object.freeze([
   Object.freeze({ label: "Documentación", detail: "Sucursales", icon: "home", route: ROUTES.documentHistory, documentType: 1, group: "primary" }),
-  Object.freeze({ label: "Dashboard Global", icon: "dashboard", route: ROUTES.dashboard, group: "primary" }),
+  Object.freeze({ label: "Dashboard Global", icon: "dashboardGlobal", route: ROUTES.dashboard, group: "primary" }),
   Object.freeze({ label: "Proveedores", icon: "providers", group: "primary" }),
   Object.freeze({ label: "Documentación", detail: "Administrativa", icon: "documents", route: ROUTES.documentHistory, documentType: 2, group: "primary" }),
-  Object.freeze({ label: "Dashboard Sucursales", icon: "dashboard", route: ROUTES.governmentEntities, group: "primary" }),
+  Object.freeze({ label: "Dashboard Sucursales", icon: "dashboardBranches", route: ROUTES.governmentEntities, group: "primary" }),
   Object.freeze({ label: "Configuración", icon: "settings", group: "primary" }),
   Object.freeze({ label: "Próximos a Vencer", icon: "warning", group: "secondary" }),
   Object.freeze({ label: "Incidentes", icon: "incidents", group: "secondary" }),

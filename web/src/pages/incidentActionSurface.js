@@ -1,7 +1,7 @@
 export const INCIDENT_ACTION_TYPE_OPERATION = Object.freeze({
-  1: "cancel",
-  2: "close",
-  3: "reassign",
+  1: "close",
+  2: "reassign",
+  3: "cancel",
   4: "reschedule",
   5: "start",
 });
@@ -16,11 +16,11 @@ export const LEGACY_INCIDENT_ACTION_QUERY_FAILURE = Object.freeze({
 });
 
 const operationDefinitions = Object.freeze([
-  { type: 5, operation: "start", label: "Iniciar Acción" },
-  { type: 1, operation: "cancel", label: "Anular Acción" },
-  { type: 2, operation: "close", label: "Cerrar Acción" },
-  { type: 3, operation: "reassign", label: "Reasignar Responsable" },
-  { type: 4, operation: "reschedule", label: "Reasignar Fecha" },
+  { type: 5, operation: "start", label: "Iniciar Acción", icon: "check-square", color: "#1bd80d" },
+  { type: 1, operation: "close", label: "Cerrar Acción", icon: "check-square", color: "#1bd80d" },
+  { type: 2, operation: "reassign", label: "Reasignar Usuario", icon: "users", color: "#0a7abf" },
+  { type: 4, operation: "reschedule", label: "Reasignar Fecha Entrega", icon: "calendar", color: "#3a454c" },
+  { type: 3, operation: "cancel", label: "Anular Acción", icon: "ban", color: "#ac0c04" },
 ]);
 
 export const INCIDENT_ACTION_SURFACES = Object.freeze({
@@ -30,6 +30,8 @@ export const INCIDENT_ACTION_SURFACES = Object.freeze({
     incidentPredicate: "not tblIncidentesExternos.isExterno",
     referenceDetail: false,
     detailAction: null,
+    title: "Acciones Incidentes Internos",
+    controlCount: 18,
   }),
   external: Object.freeze({
     sourceName: "scrMisAccionesExternos",
@@ -37,6 +39,8 @@ export const INCIDENT_ACTION_SURFACES = Object.freeze({
     incidentPredicate: "tblIncidentesExternos.isExterno",
     referenceDetail: true,
     detailAction: "OnClick",
+    title: "Acciones Incidentes Externos",
+    controlCount: 19,
   }),
 });
 
@@ -46,14 +50,16 @@ export function getIncidentActionSurface(scope) {
 
 export function getIncidentActionMenu({ statusId, canMutate = true } = {}) {
   const normalizedStatus = Number(statusId);
-  const terminal = [3, 5].includes(normalizedStatus);
+  if ([3, 5].includes(normalizedStatus)) return [];
 
   return operationDefinitions.map((item) => ({
     key: item.operation,
     label: item.label,
     legacyType: item.type,
+    icon: item.icon,
+    color: item.color,
     hidden: item.operation === "start" && normalizedStatus !== 1,
-    disabled: !canMutate || terminal,
+    disabled: !canMutate,
   })).filter((item) => !item.hidden);
 }
 
@@ -61,8 +67,8 @@ export function incidentActionModalTitle(operation) {
   return {
     cancel: "Anular Acción",
     close: "Cerrar Acción",
-    reassign: "Reasignar Responsable",
-    reschedule: "Reasignar Fecha",
+    reassign: "Reasignar Usuario",
+    reschedule: "Reasignar Fecha Entrega",
   }[operation] || "Actualizar Acción";
 }
 
@@ -84,12 +90,39 @@ export function getIncidentActionQueryPresentation({
 } = {}) {
   const queryFailed = isIncidentActionQueryFailure(errorCode);
   return {
-    rows: queryFailed ? [] : rows,
+    // OutSystems conserva los Aggregate/DataAction ya resueltos cuando otra
+    // consulta de la pantalla falla. En el runtime externo el toast convive
+    // con una fila; el error no es un estado vacío global.
+    rows,
     loading: queryFailed ? false : loading,
-    pagination: queryFailed ? false : pagination,
+    pagination,
     showError: queryFailed,
     errorMessage: incidentActionQueryErrorMessage(errorCode),
   };
+}
+
+const englishShortMonths = Object.freeze([
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+]);
+
+export function formatLegacyActionDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
+  if (!match) return value || "—";
+  return `${Number(match[3])} ${englishShortMonths[Number(match[2]) - 1]} ${match[1]}`;
+}
+
+export function compareIncidentActionRows(field) {
+  return (left, right) => String(left?.[field] ?? "").localeCompare(
+    String(right?.[field] ?? ""),
+    "es",
+    { numeric: true, sensitivity: "base" },
+  );
+}
+
+export function legacyIncidentActionFooterText(rows = [], selectedActionId = 0) {
+  const initializedRow = rows.at(-1);
+  return `${Number(initializedRow?.incidentTypeId || 0)} __ ${Number(selectedActionId || 0)}___${Number(initializedRow?.branchId || 0)}`;
 }
 
 export async function runIncidentActionOperation({

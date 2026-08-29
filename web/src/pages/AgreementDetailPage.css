@@ -1,0 +1,277 @@
+.legacy-agreement-detail {
+  color: #272b30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.legacy-agreement-detail__toolbar {
+  display: flex;
+  height: 27px;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.legacy-agreement-detail__link,
+.legacy-agreement-detail__icon-link {
+  padding: 0;
+  border: 0;
+  color: #4d5c66;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.legacy-agreement-detail__link {
+  height: 27px;
+  font-size: 18px;
+  line-height: 27px;
+}
+
+.legacy-agreement-detail__link .fa { margin-right: 8px; }
+
+.legacy-agreement-detail__card {
+  box-sizing: border-box;
+  padding: 24px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.legacy-agreement-detail__heading {
+  height: 35px;
+  margin: 0 0 20px;
+  color: #272b30;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 35px;
+}
+
+.legacy-agreement-detail__grid {
+  display: flex;
+  min-height: 244px;
+  margin: 0 -8px;
+}
+
+.legacy-agreement-detail__column {
+  flex: 1 1 0;
+  padding: 0 8px;
+}
+
+.legacy-agreement-detail__field {
+  height: 48px;
+  margin: 10px 10px 30px;
+}
+
+.legacy-agreement-detail__label,
+.legacy-agreement-client__label,
+.legacy-agreement-attachment__label {
+  display: block;
+  height: 21px;
+  color: #4f575e;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+}
+
+.legacy-agreement-detail__value,
+.legacy-agreement-client__value {
+  display: block;
+  min-height: 27px;
+  margin-left: 5px;
+  color: #272b30;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 27px;
+}
+
+.legacy-agreement-detail__client {
+  display: inline;
+  color: #4d5c66;
+}
+
+.legacy-agreement-detail__list {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.legacy-agreement-branch {
+  box-sizing: border-box;
+  width: calc(33.333333% - 15px);
+  padding: 5px;
+}
+
+.legacy-agreement-branch__card {
+  box-sizing: border-box;
+  min-height: 106.6px;
+  padding: 24px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.legacy-agreement-branch__value {
+  min-height: 27px;
+  margin: 10px 10px 20px;
+  color: #272b30;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 27px;
+}
+
+.legacy-agreement-attachment-list { margin-top: 10px; }
+
+.legacy-agreement-attachment {
+  box-sizing: border-box;
+  min-height: 98.6px;
+  padding: 24px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.legacy-agreement-attachment__row {
+  display: grid;
+  min-height: 49px;
+  grid-template-columns: 15% 32% 32% 15%;
+  align-items: start;
+}
+
+.legacy-agreement-attachment__type {
+  box-sizing: border-box;
+  min-height: 49px;
+  padding: 10px;
+}
+
+.legacy-agreement-attachment__type .fa,
+.legacy-agreement-detail__icon-link .fa {
+  font-size: 28px;
+  line-height: 28px;
+}
+
+.legacy-agreement-attachment__field {
+  min-height: 42px;
+}
+
+.legacy-agreement-attachment__field--name { margin-left: 20px; }
+.legacy-agreement-attachment__field--date { padding-left: 10px; }
+
+.legacy-agreement-attachment__value {
+  color: #272b30;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+}
+
+.legacy-agreement-attachment__actions {
+  display: flex;
+  min-height: 49px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 10px;
+}
+
+.legacy-agreement-detail__icon-link--preview { margin-right: 10px; }
+
+.legacy-agreement-detail__audit {
+  min-height: 21px;
+  margin-top: 20px;
+  color: #272b30;
+  font-size: 14px;
+  line-height: 21px;
+  text-align: right;
+}
+
+.legacy-agreement-detail__loading {
+  display: grid;
+  min-height: 360px;
+  place-items: center;
+}
+
+.legacy-agreement-download-mask {
+  position: fixed;
+  z-index: 10020;
+  display: grid;
+  inset: 0;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.legacy-agreement-client-drawer .ant-drawer-mask { background: rgba(0, 0, 0, 0.25); }
+.legacy-agreement-client-drawer .ant-drawer-content-wrapper { box-shadow: 0 6px 8px rgba(0, 0, 0, 0.1); }
+.legacy-agreement-client-drawer .ant-drawer-header { min-height: 58.5px; padding: 10px 24px; border-bottom: 0; }
+.legacy-agreement-client-drawer .ant-drawer-title { color: #272b30; font-size: 26px; font-weight: 600; line-height: 32.5px; }
+.legacy-agreement-client-drawer .ant-drawer-body { padding: 22px 24px 24px; }
+
+.legacy-agreement-client__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.legacy-agreement-client__field {
+  min-height: 68px;
+  padding: 10px;
+}
+
+.legacy-agreement-client__value {
+  margin-left: 0;
+  overflow-wrap: anywhere;
+}
+
+.legacy-agreement-client__contacts {
+  box-sizing: border-box;
+  margin-top: 13px;
+  padding: 24px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.legacy-agreement-client__contacts h3 {
+  height: 28px;
+  margin: 0 0 27px;
+  color: #272b30;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 27.5px;
+}
+
+.legacy-agreement-client__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.legacy-agreement-client__table th {
+  height: 48px;
+  padding: 0 24px;
+  color: #f3f6f8;
+  background: #444;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 21px;
+  text-align: center;
+}
+
+.legacy-agreement-client__table td {
+  height: 56px;
+  padding: 0 24px;
+  border-bottom: 1px solid #dee2e6;
+  color: #272b30;
+  background: #fff;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+  text-align: center;
+}
+
+.legacy-agreement-preview-drawer .ant-drawer-mask { background: rgba(0, 0, 0, 0.25); }
+.legacy-agreement-preview-drawer .ant-drawer-header { padding: 10px 24px; border-bottom: 0; }
+.legacy-agreement-preview-drawer .ant-drawer-title { color: #272b30; font-size: 28px; font-weight: 600; }
+
+@media (max-width: 760px) {
+  .legacy-agreement-detail__grid { display: block; }
+  .legacy-agreement-branch { width: 100%; }
+  .legacy-agreement-attachment__row { grid-template-columns: 70px 1fr; gap: 10px; }
+  .legacy-agreement-attachment__field--name,
+  .legacy-agreement-attachment__field--date { margin-left: 0; padding-left: 0; }
+  .legacy-agreement-client__grid { grid-template-columns: 1fr; }
+}

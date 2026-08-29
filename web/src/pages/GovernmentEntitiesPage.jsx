@@ -1,170 +1,298 @@
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { Alert, Button, Form, Input, Modal, Select, Table, message } from "antd";
-import { useState } from "react";
-import { useCatalogList, useCatalogLookups } from "../hooks/useCatalogList.js";
+import { Modal, Select, Table } from "antd";
+import { useEffect, useRef, useState } from "react";
+import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
+import { runtimeConfig } from "../config/runtime.js";
+import { useCatalogList } from "../hooks/useCatalogList.js";
 import {
   createGovernmentEntity,
   deactivateGovernmentEntity,
   getGovernmentEntities,
+  getGovernmentEntityLookups,
   updateGovernmentEntity,
 } from "../services/catalogService.js";
-import { isTrue, options } from "./CatalogUi.jsx";
+import {
+  GOVERNMENT_ENTITIES_AGGREGATE_LIMIT,
+  GOVERNMENT_ENTITIES_FEEDBACK,
+  GOVERNMENT_ENTITIES_PAGE_SIZE,
+  GOVERNMENT_ENTITIES_QUERY_ERROR,
+  GOVERNMENT_ENTITY_AREAS,
+  governmentEntityArea,
+  governmentEntityCreatePayload,
+  governmentEntityPaginationTotal,
+} from "./governmentEntitiesParity.js";
+import "./GovernmentEntitiesPage.css";
 
-const loadGovernmentEntities = (query) => getGovernmentEntities(query);
-const areaOptions = [
-  { value: "legal", label: "Legal" },
-  { value: "regulatory", label: "Regulatorio" },
-];
+const emptyLookups = Object.freeze({ entities: [], responsibles: [] });
 
-function entityFormValues(entity) {
-  if (!entity) return { name: "", description: "", area: undefined, responsibleId: undefined };
-  return {
-    name: entity.name || "",
-    description: entity.description || "",
-    area: isTrue(entity.legal) ? "legal" : "regulatory",
-    responsibleId: entity.responsibleId ? Number(entity.responsibleId) : undefined,
-  };
+// The filtered Aggregate is always refreshed with StartIndex=0 and
+// MaxRecords=50. The Pagination widget retains its own StartIndex, an
+// observable legacy defect deliberately preserved here.
+const loadGovernmentEntities = (query) => getGovernmentEntities({
+  ...query,
+  page: 1,
+  pageSize: GOVERNMENT_ENTITIES_AGGREGATE_LIMIT,
+  sortBy: undefined,
+  sortOrder: undefined,
+});
+
+function lookupOptions(items) {
+  return (items || []).map((item, index) => ({
+    key: `${item?.id ?? 0}-${index}`,
+    value: Number(item?.id || 0),
+    label: item?.name || "",
+  }));
 }
 
 export function GovernmentEntitiesPage() {
-  const listing = useCatalogList(loadGovernmentEntities);
-  const { lookups, error: lookupError } = useCatalogLookups();
-  const [form] = Form.useForm();
-  const [editing, setEditing] = useState(null);
+  const listing = useCatalogList(loadGovernmentEntities, { pageSize: GOVERNMENT_ENTITIES_PAGE_SIZE });
+  const [lookups, setLookups] = useState(emptyLookups);
+  const [lookupError, setLookupError] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [createMode, setCreateMode] = useState(true);
+  const [editing, setEditing] = useState(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftDescription, setDraftDescription] = useState("");
+  const [draftArea, setDraftArea] = useState(undefined);
+  const [draftResponsible, setDraftResponsible] = useState(undefined);
+  const [feedback, setFeedback] = useState(null);
+  const feedbackTimer = useRef(null);
 
-  function openModal(entity = null) {
-    setEditing(entity);
-    form.setFieldsValue(entityFormValues(entity));
+  useEffect(() => {
+    let active = true;
+    getGovernmentEntityLookups().then((result) => {
+      if (!active) return;
+      if (result.success) {
+        setLookups({ ...emptyLookups, ...(result.data || {}) });
+        setLookupError(false);
+      } else {
+        setLookupError(true);
+      }
+    });
+    return () => {
+      active = false;
+      window.clearTimeout(feedbackTimer.current);
+    };
+  }, []);
+
+  function showFeedback(type, message) {
+    window.clearTimeout(feedbackTimer.current);
+    setFeedback({ type, message });
+    feedbackTimer.current = window.setTimeout(() => setFeedback(null), 5_000);
+  }
+
+  function openNewEntity(event) {
+    event.preventDefault();
+    // NuevoEnteOnClick only flips VarCrear and popup visibility. It does not
+    // clear draft variables left by a prior CancelarOnClick.
+    setCreateMode(true);
+    setEditing(null);
+    setModalOpen(true);
+  }
+
+  function openHiddenEdit(event, row) {
+    event.preventDefault();
+    setCreateMode(false);
+    setEditing(row);
+    setDraftName(row.name || "");
+    setDraftDescription(row.description || "");
+    setDraftArea(governmentEntityArea(row) === "Legal" ? "legal" : "regulatory");
+    setDraftResponsible(Number(row.responsibleId || 0));
     setModalOpen(true);
   }
 
   function closeModal() {
+    // CancelarOnClick does not reset any Form value.
     setModalOpen(false);
-    setEditing(null);
-    form.resetFields();
   }
 
-  async function saveEntity(values) {
-    setSaving(true);
-    const result = editing
-      ? await updateGovernmentEntity(editing.id, values)
-      : await createGovernmentEntity(values);
-    if (result.success) {
-      message.success(result.message);
-      closeModal();
-      listing.reload();
-    } else {
-      message.error(result.message);
-      if (result.error?.field) form.setFields([{ name: result.error.field, errors: [result.message] }]);
+  async function saveEntity(event) {
+    event.preventDefault();
+    const result = createMode
+      ? await createGovernmentEntity(governmentEntityCreatePayload({
+          name: draftName,
+          description: draftDescription,
+        }))
+      : await updateGovernmentEntity(editing.id, {
+          name: draftName,
+          description: draftDescription,
+          legal: editing?.legal,
+          regulatory: editing?.regulatory,
+          responsibleId: 0,
+        });
+
+    if (!result.success) {
+      showFeedback("error", GOVERNMENT_ENTITIES_QUERY_ERROR);
+      return;
     }
-    setSaving(false);
+    setModalOpen(false);
+    showFeedback(
+      "info",
+      createMode ? GOVERNMENT_ENTITIES_FEEDBACK.saved : GOVERNMENT_ENTITIES_FEEDBACK.updated,
+    );
+    listing.reload();
   }
 
-  function confirmDeactivate(entity) {
-    Modal.confirm({
-      title: "Eliminar ente gubernamental",
-      content: `¿Desea eliminar ${entity.name}?`,
-      okText: "Eliminar",
-      cancelText: "Cancelar",
-      okButtonProps: { danger: true },
-      async onOk() {
-        const result = await deactivateGovernmentEntity(entity.id);
-        if (result.success) {
-          message.success(result.message);
-          listing.reload();
-        } else {
-          message.error(result.message);
-          throw new Error(result.message);
-        }
-      },
-    });
+  async function deactivateEntity(event, row) {
+    event.preventDefault();
+    const result = await deactivateGovernmentEntity(row.id);
+    if (!result.success) {
+      showFeedback("error", GOVERNMENT_ENTITIES_QUERY_ERROR);
+      return;
+    }
+    showFeedback("success", GOVERNMENT_ENTITIES_FEEDBACK.deactivated);
+    listing.reload();
   }
 
   const columns = [
-    { title: "Ente Gubernamental", dataIndex: "name", key: "name", width: 280, sorter: true },
-    { title: "Descripción", dataIndex: "description", key: "description", width: 430, sorter: true },
-    { title: "Responsable", dataIndex: "responsibleName", key: "responsible", width: 280, sorter: true },
+    { title: "Ente Gubernamental", dataIndex: "name", key: "name", width: "25.53760%", align: "center", sorter: true },
+    { title: "Descripción", dataIndex: "description", key: "description", width: "17.28706%", align: "center", sorter: true },
+    { title: "Responsable", dataIndex: "responsibleName", key: "responsible", width: "30.80567%", align: "center", sorter: true },
     {
       title: "Aréa Encargada",
       key: "area",
-      width: 190,
-      sorter: true,
-      render: (_, row) => isTrue(row.legal) ? "Legal" : isTrue(row.regulatory) ? "Regulatorio" : "",
+      width: "18.12123%",
+      align: "center",
+      render: (_, row) => governmentEntityArea(row),
     },
     {
       title: "",
       key: "actions",
-      width: 70,
+      width: "8.24845%",
       align: "center",
       render: (_, row) => (
-        <Button
-          type="text"
-          danger
-          icon={<DeleteOutlined />}
-          aria-label={`Eliminar ${row.name}`}
-          onClick={(event) => { event.stopPropagation(); confirmDeactivate(row); }}
-        />
+        <div className="legacy-government-entities-actions">
+          <a
+            href="#"
+            className="legacy-government-entities-edit"
+            aria-hidden="true"
+            tabIndex={-1}
+            data-client-action="EditarOnClick"
+            onClick={(event) => openHiddenEdit(event, row)}
+          >
+            <i className="fa fa-pencil-square-o" aria-hidden="true" />
+          </a>
+          <a
+            href="#"
+            className="legacy-government-entities-delete"
+            aria-label={`Inactivar ${row.name || "ente gubernamental"}`}
+            data-client-action="BorrarOnClick"
+            onClick={(event) => deactivateEntity(event, row)}
+          >
+            <i className="fa fa-trash" aria-hidden="true" />
+          </a>
+        </div>
       ),
     },
   ];
 
+  const setFiltersWithoutReset = (values) => listing.setFilters(values, { resetPage: false });
+
   return (
-    <div className="legacy-catalog-page">
-      <div className="legacy-catalog-toolbar">
-        <Button type="link" icon={<PlusOutlined />} onClick={() => openModal()}>Nuevo Ente</Button>
+    <div className="legacy-government-entities-page">
+      {(listing.error || lookupError) ? <LegacyErrorFeedback message={GOVERNMENT_ENTITIES_QUERY_ERROR} /> : null}
+      {feedback ? <LegacyErrorFeedback type={feedback.type} message={feedback.message} /> : null}
+
+      <div className="legacy-government-entities-heading">
+        <h1>Catálogo Entes Gubernamentales</h1>
+        <a href="#" className="legacy-government-entities-new" data-client-action="NuevoEnteOnClick" onClick={openNewEntity}>
+          + Nuevo Ente
+        </a>
       </div>
-      <h1>Catálogo Entes Gubernamentales</h1>
-      <Form layout="vertical" className="legacy-catalog-filters is-three" onValuesChange={(_, values) => listing.setFilters(values)}>
-        <Form.Item label="Ente Gubernamental:" name="entityId">
-          <Select allowClear showSearch optionFilterProp="label" placeholder="Seleccione Ente" options={options(lookups.entities)} />
-        </Form.Item>
-        <Form.Item label="Responsable:" name="responsibleId">
-          <Select allowClear showSearch optionFilterProp="label" placeholder="Seleccione Responsable" options={options(lookups.responsibles)} />
-        </Form.Item>
-        <Form.Item label="Aréa Encargada:" name="area">
-          <Select allowClear placeholder="Seleccione Área" options={areaOptions} />
-        </Form.Item>
-      </Form>
-      {(listing.error || lookupError) && <Alert type="error" showIcon message={listing.error || lookupError} />}
+
+      <div className="legacy-government-entities-filters">
+        <label>
+          <span>Ente Gubernamental:</span>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Seleccione Ente"
+            options={lookupOptions(lookups.entities)}
+            onChange={(entityId) => setFiltersWithoutReset({ entityId })}
+          />
+        </label>
+        <label>
+          <span>Responsable:</span>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Seleccione Responsable"
+            options={lookupOptions(lookups.responsibles)}
+            onChange={(responsibleId) => setFiltersWithoutReset({ responsibleId })}
+          />
+        </label>
+        <label>
+          <span>Aréa Encargada:</span>
+          <Select allowClear placeholder="Seleccione" options={GOVERNMENT_ENTITY_AREAS} onChange={(area) => setFiltersWithoutReset({ area })} />
+        </label>
+      </div>
+
       <Table
-        className="legacy-history-table legacy-catalog-table legacy-catalog-clickable"
+        className="legacy-government-entities-table"
         rowKey="id"
         columns={columns}
         dataSource={listing.rows}
         loading={listing.loading}
-        locale={{ emptyText: "No hay registros..." }}
-        pagination={listing.pagination}
-        onChange={listing.changeTable}
-        onRow={(row) => ({ onClick: () => openModal(row) })}
-        scroll={{ x: 1250 }}
+        locale={{
+          // The empty check is incorrectly wired to the unfiltered Aggregate.
+          emptyText: listing.pagination.total > 0 ? "" : "No hay datos para mostrar...",
+        }}
+        pagination={{
+          ...listing.pagination,
+          pageSize: GOVERNMENT_ENTITIES_PAGE_SIZE,
+          showSizeChanger: false,
+          showTotal: governmentEntityPaginationTotal,
+          onChange: (page) => listing.setFilters({ page }, { resetPage: false }),
+        }}
+        tableLayout="fixed"
       />
 
       <Modal
-        title={editing ? "Editar Ente" : "Nuevo Ente"}
+        className="legacy-government-entities-modal"
         open={modalOpen}
-        onCancel={closeModal}
         footer={null}
-        destroyOnHidden
-        width={620}
+        closable={false}
+        maskClosable={false}
+        keyboard={false}
+        centered
+        width={500}
       >
-        <Form form={form} layout="vertical" className="legacy-catalog-modal-form" onFinish={saveEntity}>
-          <Form.Item label="Ente Gubernamental" name="name" rules={[{ required: true, message: "Complete el ente gubernamental." }]}>
-            <Input maxLength={128} />
-          </Form.Item>
-          <Form.Item label="Descripción" name="description"><Input.TextArea rows={3} maxLength={2000} /></Form.Item>
-          <Form.Item label="Aréa Encargada" name="area" rules={[{ required: true, message: "Seleccione el área encargada." }]}>
-            <Select placeholder="Seleccione Área" options={areaOptions} />
-          </Form.Item>
-          <Form.Item label="Responsables" name="responsibleId" rules={[{ required: true, message: "Seleccione un responsable." }]}>
-            <Select showSearch optionFilterProp="label" placeholder="Seleccione Responsable" options={options(lookups.responsibles)} />
-          </Form.Item>
-          <div className="legacy-catalog-modal-actions">
-            <Button onClick={closeModal}>Cancelar</Button>
-            <Button type="primary" htmlType="submit" loading={saving}>Guardar</Button>
+        <div className="legacy-government-entities-modal-heading">
+          <img src={`${runtimeConfig.basePath}/brand/country-honduras.png`} alt="" />
+          <div>{createMode ? "Nuevo Ente" : "Editar Ente"}</div>
+          <span aria-hidden="true" />
+        </div>
+        <form className="legacy-government-entities-form" onSubmit={saveEntity} noValidate>
+          <label className="is-text-field">
+            <span>Ente Gubernamental</span>
+            <input autoFocus type="text" maxLength={128} value={draftName} onChange={(event) => setDraftName(event.target.value)} />
+          </label>
+          <label className="is-text-field">
+            <span>Descripción</span>
+            <input type="text" maxLength={65_535} value={draftDescription} onChange={(event) => setDraftDescription(event.target.value)} />
+          </label>
+          <label className="is-select-field">
+            <span>Aréa Encargada:</span>
+            <Select allowClear placeholder="Seleccione" options={GOVERNMENT_ENTITY_AREAS} value={draftArea} onChange={setDraftArea} />
+          </label>
+          <label className="is-select-field">
+            <span>Responsables:</span>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="Seleccione Responsable"
+              options={lookupOptions(lookups.responsibles)}
+              value={draftResponsible}
+              onChange={setDraftResponsible}
+            />
+          </label>
+          <div className="legacy-government-entities-modal-actions">
+            <button type="button" className="is-cancel" onClick={closeModal}>Cancelar</button>
+            <button type="submit" className="is-save">{createMode ? "Guardar" : "Actualizar"}</button>
           </div>
-        </Form>
+        </form>
       </Modal>
     </div>
   );

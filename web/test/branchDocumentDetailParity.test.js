@@ -11,6 +11,7 @@ import {
   documentIndicator,
   legacyGoogleViewerUrl,
   legacyBookList,
+  mergeLegacyBookCatalog,
   matchesLegacyDocumentSearch,
 } from "../src/pages/branchDocumentDetailParity.js";
 
@@ -29,6 +30,18 @@ test("busqueda documental replica prefijo exclusivo de NombreSubcategoria", () =
 test("SearchKeywordLibro permanece desconectado de GetLibros", () => {
   const books = [{ assignmentId: 1, name: "Libro de Quejas" }, { assignmentId: 2, name: "Psicotrópicos" }];
   assert.strictEqual(legacyBookList(books), books);
+});
+
+test("Refresh GetLibros conserva las filas stale de GetTblRegistroLibros", () => {
+  const detail = {
+    branch: { id: 223 },
+    books: [{ assignmentId: 137, name: "Anterior", evidences: [{ id: 2, isHistoric: true }] }],
+  };
+  const merged = mergeLegacyBookCatalog(detail, [
+    { assignmentId: 137, bookId: 9, name: "Libro de Psicotrópicos", isRequired: true },
+  ]);
+  assert.equal(merged.books[0].name, "Libro de Psicotrópicos");
+  assert.deepEqual(merged.books[0].evidences, [{ id: 2, isHistoric: true }]);
 });
 
 test("resumen replica requeridos registrados por vencer y el typo Otos", () => {
@@ -52,9 +65,11 @@ test("resumen replica requeridos registrados por vencer y el typo Otos", () => {
 test("indicadores y permisos conservan reglas observadas", () => {
   assert.equal(documentIndicator({ document: { statusId: 2 } }), "registered");
   assert.equal(documentIndicator({ document: { statusId: 4 } }), "pending");
+  assert.equal(documentIndicator({ document: { statusId: 5 } }), "expired");
   assert.equal(documentIndicator({ document: null }), null);
   assert.equal(bookIndicator({ evidences: [{ isHistoric: false }] }), "registered");
-  assert.equal(bookIndicator({ evidences: [{ isHistoric: true }] }), "pending");
+  assert.equal(bookIndicator({ evidences: [{ isHistoric: true }] }), "registered");
+  assert.equal(bookIndicator({ evidences: [] }), null);
   assert.equal(canDeleteBranchDocument(7), true);
   assert.equal(canDeleteBranchDocument(32), true);
   assert.equal(canDeleteBranchDocument(3), false);

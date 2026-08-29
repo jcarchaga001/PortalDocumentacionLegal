@@ -25,6 +25,23 @@ function rowValue(name) {
 
 const emptyValue = () => "";
 
+// scrHistoricoDocumentos completa los once SourceValue que consume
+// RecordListToExcel1. El orden sigue siendo el del productor, no el orden
+// visual de las columnas de la tabla.
+export const BRANCH_DOCUMENT_EXPORT_COLUMNS = Object.freeze([
+  exportColumn("codInternoSucursal", rowValue("branchCode")),
+  exportColumn("estado", rowValue("statusName")),
+  exportColumn("fechaContrato", rowValue("documentDate")),
+  exportColumn("Categoria", rowValue("categoryName")),
+  exportColumn("sucursal", rowValue("branchOnlyName")),
+  exportColumn("Proveedor", rowValue("providerName")),
+  exportColumn("nivelDocumento", rowValue("levelName")),
+  exportColumn("numRefencia", rowValue("reference")),
+  exportColumn("fechaVencimiento", rowValue("expirationDate")),
+  exportColumn("usuarioCreacion", rowValue("createdByName")),
+  exportColumn("numContrato", rowValue("description")),
+]);
+
 // scrHistoricoAdministrativoDoc deja estos campos sin SourceValue en el OML:
 // estado, Proveedor, nivelDocumento y usuarioCreacion. Aunque la consulta de
 // la replica pueda devolver alguno de ellos, rellenarlos cambiaria el Excel

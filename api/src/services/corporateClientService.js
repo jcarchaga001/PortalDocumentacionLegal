@@ -3,11 +3,6 @@ function positiveInteger(value) {
   return Number.isInteger(number) && number > 0 ? number : undefined;
 }
 
-function parseBoolean(value, fallback = false) {
-  if (value === undefined || value === null || value === "") return fallback;
-  return value === true || value === 1 || value === "1" || value === "true";
-}
-
 function validationError(message, field) {
   const error = new Error(message);
   error.status = 400;
@@ -20,55 +15,89 @@ function cleanText(value, maxLength) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+function legacyFormText(value, maxLength) {
+  return typeof value === "string" ? value.slice(0, maxLength) : "";
+}
+
+export const CORPORATE_CLIENT_CONTACTS_MAX_RECORDS = 500;
+
 function normalizeContact(contact = {}) {
-  const name = cleanText(contact.name, 120);
+  const name = legacyFormText(contact.name, 120);
   if (!name) throw validationError("Ingrese el nombre del contacto adicional.", "contacts.name");
-  const phone = cleanText(contact.phone, 25);
+  const phone = legacyFormText(contact.phone, 25);
   if (!phone) {
     throw validationError("Ingrese el número de teléfono del contacto.", "contacts.phone");
-  }
-  const email = cleanText(contact.email, 120);
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw validationError("El correo del contacto adicional no es valido.", "contacts.email");
   }
   return {
     id: positiveInteger(contact.id),
     name,
-    position: cleanText(contact.position, 160),
+    position: legacyFormText(contact.position, 160),
     phone,
-    email,
+    email: legacyFormText(contact.email, 120),
   };
 }
 
 export function normalizeCorporateClientPayload(payload = {}) {
-  const name = cleanText(payload.name, 250);
+  const name = legacyFormText(payload.name, 250);
   if (!name) throw validationError("Ingrese el nombre del cliente.", "name");
-  const faCode = cleanText(payload.faCode, 30);
+  const faCode = legacyFormText(payload.faCode, 30);
   if (!faCode) throw validationError("Ingrese el CodigoFA.", "faCode");
-  const contactEmail = cleanText(payload.contactEmail, 120);
-  if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
-    throw validationError("El correo del contacto principal no es valido.", "contactEmail");
-  }
   const contacts = Array.isArray(payload.contacts)
-    ? payload.contacts.filter((contact) => cleanText(contact?.name, 120)).map(normalizeContact)
+    ? payload.contacts.map(normalizeContact)
     : [];
   return {
     name,
     faCode,
-    contactName: cleanText(payload.contactName, 120),
-    contactPosition: cleanText(payload.contactPosition, 160),
-    contactPhone: cleanText(payload.contactPhone, 25),
-    contactEmail,
+    contactName: legacyFormText(payload.contactName, 120),
+    contactPosition: legacyFormText(payload.contactPosition, 160),
+    contactPhone: legacyFormText(payload.contactPhone, 25),
+    contactEmail: legacyFormText(payload.contactEmail, 120),
     contacts,
+    removedContactIds: Array.isArray(payload.removedContactIds)
+      ? [...new Set(payload.removedContactIds.map(positiveInteger).filter(Boolean))]
+      : [],
   };
+}
+
+function legacyImportText(value, maxLength) {
+  return value === undefined || value === null ? "" : String(value).slice(0, maxLength);
+}
+
+/**
+ * scrCargaMasivaClientesCorp convierte Excel directamente a strClientesCorp.
+ * A diferencia del formulario individual, la carga no aplica Trim, no valida
+ * correo y solo exige NombreContacto y TelefonoContacto en el flujo cliente.
+ */
+export function normalizeCorporateClientImportPayload(payload = {}, index = 0) {
+  const client = {
+    faCode: legacyImportText(payload.faCode, 30),
+    name: legacyImportText(payload.name, 250),
+    contactName: legacyImportText(payload.contactName, 120),
+    contactPosition: legacyImportText(payload.contactPosition, 160),
+    contactPhone: legacyImportText(payload.contactPhone, 25),
+    contactEmail: legacyImportText(payload.contactEmail, 120),
+    contacts: [],
+  };
+  if (client.contactName === "") {
+    throw validationError(
+      "Este registro no es valido, el Nombre del contacto es requerido",
+      `items.${index}.contactName`,
+    );
+  }
+  if (client.contactPhone === "") {
+    throw validationError(
+      "Este registro no es valido, el Teléfono del contacto es requerido",
+      `items.${index}.contactPhone`,
+    );
+  }
+  return client;
 }
 
 export function normalizeCorporateClientFilters(query = {}) {
   return {
     page: positiveInteger(query.page) || 1,
-    pageSize: Math.min(positiveInteger(query.pageSize) || 20, 100),
-    search: cleanText(query.search, 200),
-    activeOnly: parseBoolean(query.activeOnly, false),
+    pageSize: 50,
+    activeOnly: true,
   };
 }
 
@@ -88,6 +117,15 @@ export function createCorporateClientService(repository) {
         throw error;
       }
       return client;
+    },
+    async contacts(countryCode, rawId) {
+      const clientId = positiveInteger(rawId);
+      if (!clientId) throw validationError("El cliente solicitado no es valido.", "id");
+      const items = await repository.listContacts(countryCode, clientId);
+      return {
+        items,
+        maxRecords: CORPORATE_CLIENT_CONTACTS_MAX_RECORDS,
+      };
     },
     create(countryCode, userId, payload) {
       return repository.create(countryCode, userId, normalizeCorporateClientPayload(payload));
@@ -109,24 +147,9 @@ export function createCorporateClientService(repository) {
       if (!Array.isArray(payload.items) || payload.items.length === 0) {
         throw validationError("La carga debe contener al menos un cliente.", "items");
       }
-      if (payload.items.length > 2_000) {
-        throw validationError("La carga no puede superar 2000 clientes.", "items");
-      }
       const seenFaCodes = new Set();
       const clients = payload.items.map((item, index) => {
-        const client = normalizeCorporateClientPayload(item);
-        if (!client.contactName) {
-          throw validationError(
-            "Este registro no es valido, el Nombre del contacto es requerido",
-            `items.${index}.contactName`,
-          );
-        }
-        if (!client.contactPhone) {
-          throw validationError(
-            "Este registro no es valido, el Telefono del contacto es requerido",
-            `items.${index}.contactPhone`,
-          );
-        }
+        const client = normalizeCorporateClientImportPayload(item, index);
         if (seenFaCodes.has(client.faCode)) {
           throw validationError("Este registro no es valido", `items.${index}.faCode`);
         }

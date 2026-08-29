@@ -7,7 +7,7 @@ import {
   normalizeAgreementPayload,
 } from "../src/services/agreementService.js";
 
-test("convenios conserva el orden y el filtro de indefinidos observado en el OML", async () => {
+test("convenios conserva las tres ramas y el filtro de indefinidos observado en el OML", async () => {
   const calls = [];
   const pool = {
     async execute(sql, parameters) {
@@ -57,11 +57,15 @@ test("convenios conserva el orden y el filtro de indefinidos observado en el OML
     indefinite: true,
   });
 
-  const listSql = calls.find(({ sql }) => sql.includes("GROUP BY a.CodConvenio"))?.sql || "";
+  const listSql = calls.find(({ sql }) => sql.includes("legacy_rows"))?.sql || "";
   const managerSql = calls.find(({ sql }) => sql.includes("vstEmpleadosMesEnCurso"))?.sql || "";
-  assert.match(listSql, /DATEDIFF\(a\.FechaFinal, CURDATE\(\)\) < 30 OR a\.isIndefinido = 1/);
-  assert.match(listSql, /a\.CodConvenio ASC/);
+  assert.equal((listSql.match(/UNION ALL/g) || []).length, 2);
+  assert.match(listSql, /DATEDIFF\(a\.FechaFinal, NOW\(\)\) < 30/);
+  assert.match(listSql, /DATEDIFF\(a\.FechaFinal, NOW\(\)\) < 0/);
+  assert.match(listSql, /a\.isIndefinido = 1 OR DATEDIFF\(a\.FechaFinal, NOW\(\)\) >= 30/);
+  assert.match(listSql, /AND a\.isIndefinido = 1[\s\S]*ORDER BY a\.CodConvenio DESC/);
   assert.match(managerSql, /Codigo_InternoSucursal LIKE '%Call Center%'/);
+  assert.match(managerSql, /employee\.CodPais = \?/);
   assert.equal(result.items[0].accountManagerArea, "FM101 BODEGA");
   assert.equal(result.items[0].accountManagerName, "Gestor legacy");
   assert.equal(result.items[0].isCentralized, false);

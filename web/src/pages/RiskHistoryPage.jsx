@@ -1,21 +1,18 @@
-import { FileExcelOutlined, InfoCircleOutlined } from "@ant-design/icons";
-import { Alert, Button, Form, Select, Table, Tag } from "antd";
+import { Form, Select } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { LegacyErrorFeedback } from "../components/LegacyErrorFeedback.jsx";
 import { getRiskAnalyses, getRiskCatalogs } from "../services/riskService.js";
 import { exportRowsToXlsx } from "../services/spreadsheetService.js";
+import {
+  compactRiskScore,
+  legacyRiskCounter,
+  legacyRiskStatusTone,
+  nextLegacyRiskSort,
+  RISK_PAGE_SIZE,
+  RISK_QUERY_ERROR,
+} from "./riskParity.js";
 import "../styles/risk.css";
-
-const PAGE_SIZE = 50;
-
-function compactScore(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? String(number) : "";
-}
-
-function statusColor(statusId) {
-  return ({ 1: "green", 2: "default", 3: "red", 4: "orange" })[Number(statusId)] || "default";
-}
 
 function filterQuery(values, sorting = {}) {
   return {
@@ -32,14 +29,14 @@ export function RiskHistoryPage() {
   const [form] = Form.useForm();
   const [catalogs, setCatalogs] = useState({ societies: [], statuses: [], riskScores: [], accuracyScores: [] });
   const [rows, setRows] = useState([]);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: PAGE_SIZE, total: 0 });
+  const [pagination, setPagination] = useState({ current: 1, pageSize: RISK_PAGE_SIZE, total: 0 });
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
-  const sorting = useRef({ sortBy: "riskScore", sortDirection: "descend" });
+  const sorting = useRef({ sortBy: "riskScore", sortDirection: "DESC" });
   const sequence = useRef(0);
 
-  async function load(values = {}, page = 1, pageSize = PAGE_SIZE) {
+  async function load(values = {}, page = 1, pageSize = RISK_PAGE_SIZE) {
     const requestId = ++sequence.current;
     setLoading(true);
     const result = await getRiskAnalyses({ ...filterQuery(values, sorting.current), page, pageSize });
@@ -53,7 +50,7 @@ export function RiskHistoryPage() {
       });
       setError("");
     } else {
-      setError(result.message || "No fue posible consultar los análisis de riesgo.");
+      setError(RISK_QUERY_ERROR);
     }
     setLoading(false);
   }
@@ -71,44 +68,13 @@ export function RiskHistoryPage() {
   }, []);
 
   const columns = [
-    { title: "Cod Archivo", dataIndex: "codArchivo", key: "codArchivo", width: 125, sorter: true },
-    { title: "País", dataIndex: "countryName", key: "countryName", width: 145, sorter: true },
-    { title: "Sociedad", dataIndex: "societyName", key: "societyName", width: 330, sorter: true },
-    { title: "Sucursal", dataIndex: "branchName", key: "branchName", width: 220, sorter: true },
-    {
-      title: "Riesgo",
-      dataIndex: "riskScore",
-      key: "riskScore",
-      width: 115,
-      sorter: true,
-      defaultSortOrder: "descend",
-      render: (value) => <strong className={Number(value) >= 9 ? "legacy-risk-critical" : ""}>{compactScore(value)}</strong>,
-    },
-    { title: "Accuracy", dataIndex: "accuracyScore", key: "accuracyScore", width: 120, sorter: true, render: compactScore },
-    {
-      title: "Estado",
-      dataIndex: "statusName",
-      key: "statusName",
-      width: 135,
-      sorter: true,
-      render: (value, row) => <Tag color={statusColor(row.statusId)}>{value || ""}</Tag>,
-    },
-    {
-      title: "",
-      key: "detail",
-      width: 60,
-      align: "center",
-      render: (_, row) => (
-        <Link
-          className="legacy-risk-detail-link"
-          to={{ pathname: "/scrDetalleRiesgo", search: `?CodArchivo=${row.codArchivo}` }}
-          aria-label={`Ver análisis ${row.codArchivo}`}
-          title="Ver detalle"
-        >
-          <InfoCircleOutlined />
-        </Link>
-      ),
-    },
+    { title: "Cod Archivo", key: "codArchivo", align: "right" },
+    { title: "País", key: "countryName", align: "right" },
+    { title: "Sociedad", key: "societyName" },
+    { title: "Sucursal", key: "branchName" },
+    { title: "Riesgo", key: "riskScore", align: "center" },
+    { title: "Accuracy", key: "accuracyScore" },
+    { title: "Estado", key: "statusName", align: "center" },
   ];
 
   async function exportAnalysis() {
@@ -135,7 +101,7 @@ export function RiskHistoryPage() {
       });
       setError("");
     } else {
-      setError(result.message || "No fue posible generar el archivo de análisis de riesgo.");
+      setError(RISK_QUERY_ERROR);
     }
     setExporting(false);
   }
@@ -151,18 +117,27 @@ export function RiskHistoryPage() {
     <div className="legacy-risk-page">
       <div className="legacy-risk-title-row">
         <h1>Análisis Contratos</h1>
-        <Button
-          type="text"
-          className="legacy-risk-export"
-          icon={<FileExcelOutlined />}
-          loading={exporting}
+        <a
+          href="#"
+          className={`legacy-risk-export${exporting ? " is-loading" : ""}`}
           aria-label="Descargar Excel"
-          title="Descargar Excel"
-          onClick={exportAnalysis}
-        />
+          title="Descargar Reporte Excel"
+          aria-busy={exporting}
+          onClick={(event) => {
+            event.preventDefault();
+            if (!exporting) exportAnalysis();
+          }}
+        >
+          <i className="fa fa-file-excel-o fa-2x" aria-hidden="true" />
+        </a>
       </div>
 
-      <Form form={form} layout="vertical" className="legacy-risk-filters" onValuesChange={(_, values) => load(values)}>
+      <Form
+        form={form}
+        layout="vertical"
+        className="legacy-risk-filters"
+        onValuesChange={(_, values) => load(values, pagination.current, pagination.pageSize)}
+      >
         <Form.Item name="societyId" label="Sociedad">
           <Select allowClear showSearch optionFilterProp="label" placeholder="Seleccione..." options={simpleOptions(catalogs.societies)} />
         </Form.Item>
@@ -177,29 +152,103 @@ export function RiskHistoryPage() {
         </Form.Item>
       </Form>
 
-      {error && <Alert className="legacy-risk-alert" type="error" showIcon message={error} />}
+      <LegacyErrorFeedback message={error} />
 
-      <Table
-        className="legacy-risk-table"
-        rowKey="analysisId"
-        columns={columns}
-        dataSource={rows}
-        loading={loading}
-        scroll={{ x: 1250 }}
-        locale={{ emptyText: "No hay registros..." }}
-        pagination={{ ...pagination, showSizeChanger: false }}
-        onChange={(nextPagination, _, sorter, extra) => {
-          sorting.current = {
-            sortBy: sorter.field || "riskScore",
-            sortDirection: sorter.order || "descend",
-          };
-          load(
-            form.getFieldsValue(),
-            extra.action === "sort" ? 1 : nextPagination.current,
-            nextPagination.pageSize,
-          );
-        }}
-      />
+      <div className={`legacy-risk-table-shell${loading ? " is-loading" : ""}`}>
+        <table className="legacy-risk-table">
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th
+                  key={column.key}
+                  tabIndex="0"
+                  className={column.align ? `is-${column.align}` : ""}
+                  onClick={() => {
+                    sorting.current = nextLegacyRiskSort(sorting.current, column.key);
+                    load(form.getFieldsValue(), 1, pagination.pageSize);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.currentTarget.click();
+                    }
+                  }}
+                >
+                  {column.title}
+                  <i className="fa fa-sort legacy-risk-sort-icon" aria-hidden="true" />
+                </th>
+              ))}
+              <th aria-label="Detalle" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.analysisId}>
+                <td className="is-right">{row.codArchivo}</td>
+                <td className="is-right">{row.countryName || ""}</td>
+                <td>{row.societyName || ""}</td>
+                <td>{row.branchName || ""}</td>
+                <td className="is-center">
+                  <span className={Number(row.riskScore) >= 9 ? "legacy-risk-critical" : ""}>
+                    {compactRiskScore(row.riskScore)}
+                  </span>
+                </td>
+                <td>{compactRiskScore(row.accuracyScore)}</td>
+                <td className="is-center">
+                  <span className={`legacy-risk-status is-${legacyRiskStatusTone(row.statusName)}`}>
+                    {row.statusName || ""}
+                  </span>
+                </td>
+                <td>
+                  <Link
+                    className="legacy-risk-detail-link"
+                    to={{ pathname: "/scrDetalleRiesgo", search: `?CodArchivo=${row.codArchivo}` }}
+                    aria-label={`Ver análisis ${row.codArchivo}`}
+                    title="Ver detalle"
+                  >
+                    <i className="fa fa-info-circle fa-2x" aria-hidden="true" />
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!loading && rows.length === 0 ? <div className="legacy-risk-empty">No hay registros...</div> : null}
+      </div>
+
+      <div className="legacy-risk-table-footer">
+        <span>{legacyRiskCounter(pagination.current, pagination.pageSize, pagination.total)}</span>
+        <nav className="legacy-risk-pagination" aria-label="Pagination">
+          <button
+            type="button"
+            aria-label="go to previous page"
+            disabled={pagination.current <= 1}
+            onClick={() => load(form.getFieldsValue(), pagination.current - 1, pagination.pageSize)}
+          >
+            <i className="fa fa-angle-left" aria-hidden="true" />
+          </button>
+          {Array.from({ length: Math.ceil(pagination.total / pagination.pageSize) }, (_, index) => index + 1).map((page) => (
+            <button
+              key={page}
+              type="button"
+              aria-label={page === pagination.current ? `page ${page}` : `go to page ${page}`}
+              aria-current={page === pagination.current ? "true" : "false"}
+              className={page === pagination.current ? "is-active" : ""}
+              onClick={() => load(form.getFieldsValue(), page, pagination.pageSize)}
+            >
+              {page}
+            </button>
+          ))}
+          <button
+            type="button"
+            aria-label="go to next page"
+            disabled={pagination.current >= Math.ceil(pagination.total / pagination.pageSize)}
+            onClick={() => load(form.getFieldsValue(), pagination.current + 1, pagination.pageSize)}
+          >
+            <i className="fa fa-angle-right" aria-hidden="true" />
+          </button>
+        </nav>
+      </div>
     </div>
   );
 }

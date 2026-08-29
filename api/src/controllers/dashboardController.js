@@ -26,5 +26,21 @@ export function createDashboardController(dashboardService) {
         next(error);
       }
     },
+    async documents(req, res, next) {
+      try {
+        const data = await dashboardService.getDocuments(req.auth.countryCode, req.query);
+        res.json(normalizedSuccess("Documentos del dashboard consultados correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
+    async exportRows(req, res, next) {
+      try {
+        const data = await dashboardService.getExportRows(req.auth.countryCode);
+        res.json(normalizedSuccess("Datos de exportacion del dashboard consultados correctamente.", data));
+      } catch (error) {
+        next(error);
+      }
+    },
   };
 }

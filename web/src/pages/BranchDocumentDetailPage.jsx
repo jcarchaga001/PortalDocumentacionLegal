@@ -19,6 +19,7 @@ import {
   readLegacySelectedBranchId,
 } from "../config/legacyDocumentContext.js";
 import { runtimeConfig } from "../config/runtime.js";
+import { LEGACY_FEEDBACK_CONTRACTS, showLegacyFeedback } from "../config/legacyFeedbackContracts.js";
 import { getBranchMonitoring } from "../services/dashboardService.js";
 import {
   addBookEvidence,
@@ -26,6 +27,7 @@ import {
   deleteDocument,
   getBookEvidence,
   getBookEvidencePreviewUrl,
+  getBranchBookCatalog,
   getBranchDocumentDetail,
   getDocumentAttachment,
   getDocumentAttachmentPreviewUrl,
@@ -45,6 +47,7 @@ import {
   getDocumentStatusTone,
   legacyGoogleViewerUrl,
   legacyBookList,
+  mergeLegacyBookCatalog,
   matchesLegacyDocumentSearch,
 } from "./branchDocumentDetailParity.js";
 import "./BranchDocumentDetailPage.css";
@@ -71,6 +74,9 @@ function LegacyIndicator({ kind }) {
   }
   if (kind === "pending") {
     return <i className="fa fa-exclamation branch-selector-status is-pending" aria-label="Pendiente" />;
+  }
+  if (kind === "expired") {
+    return <span className="branch-selector-status is-expired">Vencido</span>;
   }
   return <span />;
 }
@@ -222,6 +228,7 @@ export function BranchDocumentDetailPage() {
   const filteredBooks = legacyBookList(detail?.books);
   const selectedDocumentEntry = (detail?.documents || []).find((entry) => entry.subcategoryId === selectedSubcategoryId);
   const selectedBook = (detail?.books || []).find((book) => book.assignmentId === selectedBookId);
+  const selectedBookEvidence = currentBookEvidences(selectedBook)[0];
   const summary = monitoringSummary || buildBranchDocumentSummary(detail?.documents);
 
   function openDocumentForm(entry) {
@@ -273,7 +280,7 @@ export function BranchDocumentDetailPage() {
 
   function confirmDocumentDelete(entry) {
     if (!entry.document) {
-      message.error("No existe archivo para eliminar");
+      showLegacyFeedback(message, LEGACY_FEEDBACK_CONTRACTS.missingFileToDelete);
       return;
     }
     Modal.confirm({
@@ -337,9 +344,16 @@ export function BranchDocumentDetailPage() {
         message.error(result.message);
         return;
       }
-      message.success("Registro exitoso");
+      // AceptarAgregarOnClick closes the popup and refreshes GetLibros only.
+      // GetTblRegistroLibros remains stale until another selection/reload.
       setEvidenceModal(false);
-      await load();
+      evidenceForm.resetFields();
+      const booksResult = await getBranchBookCatalog(branchId);
+      if (booksResult.success) {
+        setDetail((current) => mergeLegacyBookCatalog(current, booksResult.data));
+      } else {
+        message.error(booksResult.message);
+      }
     } catch {
       message.error("No se puede leer archivo (Archivo con errores)");
     } finally {
@@ -384,7 +398,10 @@ export function BranchDocumentDetailPage() {
   }
 
   function openLegacyEvidenceDeletePopup(book) {
-    // The legacy AceptarEliminarLibro path is disconnected; accepting closes the popup only.
+    // Safe deviation: both legacy delete popups call AceptarOnClick and can
+    // soft-delete the selected document even when the user chose a book
+    // evidence. Keep that destructive cross-action disabled until explicitly
+    // authorized against disposable data.
     Modal.confirm({
       title: `Confirma que desea eliminar la evidencia de libro ${book.name}`,
       okText: "Aceptar",
@@ -519,12 +536,12 @@ export function BranchDocumentDetailPage() {
         </div>
       </section>
       <section className="branch-document-viewer branch-book-viewer" aria-label="Vista previa de evidencia">
-        {selectedBook && canDownloadBookEvidence ? currentBookEvidences(selectedBook).map((evidence) => (
-          <button className="branch-book-download" key={evidence.id} type="button" onClick={() => downloadEvidence(evidence)}>
-            {evidence.fileName} <span>(Descargar Archivo...)</span>
+        {selectedBookEvidence && canDownloadBookEvidence ? (
+          <button className="branch-book-download" type="button" onClick={() => downloadEvidence(selectedBookEvidence)}>
+            {selectedBookEvidence.fileName} <span>(Descargar Archivo...)</span>
           </button>
-        )) : null}
-        {selectedBook && currentBookEvidences(selectedBook).length ? (
+        ) : null}
+        {selectedBookEvidence ? (
           <div className="branch-book-identifiers" aria-hidden="true"><span>{selectedBook.assignmentId}</span><span>{selectedBook.bookId}</span></div>
         ) : null}
         <InlinePreview preview={bookPreview} emptyText={selectedBook ? "No existe el archivo..." : "Seleccione un libro..."} />
@@ -618,7 +635,7 @@ export function BranchDocumentDetailPage() {
 
       <Modal title="Agregue la evidencia" open={evidenceModal} onCancel={() => setEvidenceModal(false)} footer={null} destroyOnClose>
         <Form form={evidenceForm} layout="vertical" onFinish={submitEvidence}>
-          <Form.Item name="attachment" valuePropName="fileList" getValueFromEvent={(event) => Array.isArray(event) ? event : event?.fileList} rules={[{ required: true, message: "Adjunte el archivo." }]}>
+          <Form.Item name="attachment" valuePropName="fileList" getValueFromEvent={(event) => Array.isArray(event) ? event : event?.fileList}>
             <Upload beforeUpload={() => false} maxCount={1}><Button>Adjunte Archivo</Button></Upload>
           </Form.Item>
           <div className="legacy-create-actions"><Button onClick={() => setEvidenceModal(false)}>Cancelar</Button><Button type="primary" htmlType="submit" loading={saving}>Aceptar</Button></div>

@@ -24,6 +24,7 @@ const CLAUSES = Object.freeze([
 ]);
 
 const DETAIL_LABELS = Object.freeze({
+  Found: "Encontró",
   Page: "Página",
   Section: "Sección",
   Comment: "Comentario",
@@ -38,6 +39,7 @@ const DETAIL_LABELS = Object.freeze({
   Percent: "Porcentaje",
   Formula_text: "Formula Texto",
   Jurisdiction_text: "Jurisdicción",
+  Status_as_of_2026_02_12: "Estatus",
   Registry_reference: "Referencia de Registro",
 });
 
@@ -84,32 +86,21 @@ function normalizeAnalysis(row) {
 }
 
 function detailLabel(detailKey) {
-  if (detailKey?.startsWith("Status_as_of_")) return "Estatus";
   return DETAIL_LABELS[detailKey] || detailKey;
-}
-
-function hasVisibleValue(detailKey, value) {
-  if (detailKey === "Found") return false;
-  const normalized = String(value ?? "").trim();
-  if (!normalized) return false;
-  return !["0", "0.0", "0.00", "1900-01-01", "1900-01-01 00:00:00"].includes(normalized);
 }
 
 export function groupRiskDetails(details = []) {
   const grouped = new Map();
   for (const detail of details) {
     if (!grouped.has(detail.clauseKey)) grouped.set(detail.clauseKey, []);
-    if (hasVisibleValue(detail.detailKey, detail.value)) {
-      grouped.get(detail.clauseKey).push({
-        key: detail.detailKey,
-        label: detailLabel(detail.detailKey),
-        value: String(detail.value).trim(),
-      });
-    }
+    grouped.get(detail.clauseKey).push({
+      key: detail.detailKey,
+      label: detailLabel(detail.detailKey),
+      value: String(detail.value ?? "").trim(),
+    });
   }
   return CLAUSES
-    .filter((clause) => grouped.has(clause.key))
-    .map((clause) => ({ ...clause, fields: grouped.get(clause.key) }));
+    .map((clause) => ({ ...clause, fields: grouped.get(clause.key) || [] }));
 }
 
 function notFoundError() {

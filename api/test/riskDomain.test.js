@@ -66,26 +66,54 @@ test("la consulta replica los joins y usa codPlantilla_Doc como Cod Archivo", as
   assert.equal(result.total, 183);
 });
 
-test("agrupa las nueve cláusulas y oculta Found, ceros y fechas centinela", () => {
+test("los catálogos conservan el orden natural sin ORDER BY inventado", async () => {
+  const calls = [];
+  const repository = createRiskRepository({
+    async execute(sql, parameters = []) {
+      calls.push({ sql, parameters });
+      return [[], []];
+    },
+  });
+
+  await repository.catalogs(4);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].parameters, [4]);
+  assert.deepEqual(calls[1].parameters, []);
+  assert.doesNotMatch(calls[0].sql, /ORDER BY/i);
+  assert.doesNotMatch(calls[1].sql, /ORDER BY/i);
+});
+
+test("conserva las nueve cláusulas y todos los valores que pinta el OML", () => {
   const clauses = groupRiskDetails([
     { clauseKey: "early_exit_favorable", detailKey: "Found", value: "True" },
     { clauseKey: "early_exit_favorable", detailKey: "Page", value: "5" },
     { clauseKey: "early_exit_favorable", detailKey: "Start_date", value: "1900-01-01" },
+    { clauseKey: "early_exit_favorable", detailKey: "Amount_usd", value: "0" },
     { clauseKey: "early_exit_favorable", detailKey: "Comment", value: "Cláusula favorable" },
     { clauseKey: "contract_duration", detailKey: "Status_as_of_2026_02_12", value: "VIGENTE" },
     { clauseKey: "public_registry", detailKey: "Registry_reference", value: "Tomo 1" },
   ]);
   assert.deepEqual(clauses.map(({ key, title }) => ({ key, title })), [
     { key: "early_exit_favorable", title: "Favorable" },
+    { key: "early_exit_penalty", title: "Penalidad" },
     { key: "contract_duration", title: "Duración" },
+    { key: "auto_renewal", title: "Renovación" },
+    { key: "rent", title: "Renta" },
+    { key: "annual_increase", title: "Incremento Anual" },
+    { key: "insurance_obligation", title: "Seguros" },
+    { key: "jurisdiction", title: "Jurisdicción" },
     { key: "public_registry", title: "Registro Público" },
   ]);
   assert.deepEqual(clauses[0].fields, [
+    { key: "Found", label: "Encontró", value: "True" },
     { key: "Page", label: "Página", value: "5" },
+    { key: "Start_date", label: "Fecha Inicio", value: "1900-01-01" },
+    { key: "Amount_usd", label: "Monto USD", value: "0" },
     { key: "Comment", label: "Comentario", value: "Cláusula favorable" },
   ]);
-  assert.equal(clauses[1].fields[0].label, "Estatus");
-  assert.equal(clauses[2].fields[0].label, "Referencia de Registro");
+  assert.deepEqual(clauses[1].fields, []);
+  assert.equal(clauses[2].fields[0].label, "Estatus");
+  assert.equal(clauses[8].fields[0].label, "Referencia de Registro");
 });
 
 test("el detalle se busca por codPlantilla_Doc y devuelve la escala del legacy", async () => {
@@ -116,7 +144,8 @@ test("el detalle se busca por codPlantilla_Doc y devuelve la escala del legacy",
   const detail = await service.detail("115", 4);
   assert.equal(detail.codArchivo, 115);
   assert.equal(detail.riskScore, 10);
-  assert.equal(detail.clauses[0].title, "Renta");
+  assert.equal(detail.clauses[4].title, "Renta");
+  assert.equal(detail.clauses[4].fields[0].value, "60474.92");
 
   const catalogs = await service.catalogs(4);
   assert.deepEqual(catalogs.riskScores[0], { value: 1, description: "Muy bajo" });

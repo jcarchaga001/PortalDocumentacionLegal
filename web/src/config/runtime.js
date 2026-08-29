@@ -17,5 +17,7 @@ function normalizeApiBaseUrl(value) {
 export const runtimeConfig = Object.freeze({
   basePath: normalizeBasePath(import.meta.env.VITE_BASE_PATH, "VITE_BASE_PATH"),
   apiBaseUrl: normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL),
+  postLogoutUrl:
+    import.meta.env.VITE_POST_LOGOUT_URL?.trim()
+    || "https://fep-dev.outsystemsenterprise.com/IndicedeAplicaciones/scrInicio",
 });
-

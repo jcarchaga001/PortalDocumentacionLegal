@@ -66,10 +66,36 @@ test("registro desde detalle de sucursal fuerza documento principal de sucursal"
       return { success: true };
     },
   });
-  await service.createBranchDocument(auth, 77, validPayload({ branchId: 999, documentType: 2 }));
+  await service.createBranchDocument(auth, 77, validPayload({ branchId: 999, documentType: 2, isActivePrincipal: false }));
   assert.equal(captured.branchId, 77);
   assert.equal(captured.documentType, 1);
   assert.equal(captured.isActivePrincipal, true);
+  assert.equal(captured.replaceActivePrincipal, false);
+});
+
+test("detalle de sucursal solo desactiva principales previos si se marco el checkbox legacy", async () => {
+  const captured = [];
+  const service = createDocumentService({
+    async create(_countryCode, _userId, document) {
+      captured.push(document);
+      return { id: captured.length };
+    },
+  }, {
+    async uploadFileToS3() {
+      return { success: true };
+    },
+  });
+
+  await service.createBranchDocument(auth, 77, validPayload({ isActivePrincipal: false }));
+  await service.createBranchDocument(auth, 77, validPayload({ isActivePrincipal: true }));
+
+  assert.deepEqual(captured.map((item) => ({
+    replaceActivePrincipal: item.replaceActivePrincipal,
+    insertedAsPrincipal: item.isActivePrincipal,
+  })), [
+    { replaceActivePrincipal: false, insertedAsPrincipal: true },
+    { replaceActivePrincipal: true, insertedAsPrincipal: true },
+  ]);
 });
 
 test("si S3 falla no se escribe metadata documental", async () => {
@@ -167,17 +193,53 @@ test("formatos de archivo coinciden con ComprimirArchivosMultimedia del legacy",
   );
 });
 
-test("detalle sucursal conserva nivel opcional y exige ambas fechas aun si es referencial", () => {
+test("registro conserva nivel opcional y oculta fechas obligatorias cuando es referencial", () => {
   const referential = normalizeDocumentPayload(validPayload({ isReferential: true, level: undefined }));
   assert.equal(referential.isReferential, true);
   assert.equal(referential.level, null);
   assert.equal(referential.documentDate, "2026-08-01");
+  const withoutDates = normalizeDocumentPayload(validPayload({
+    isReferential: true,
+    documentDate: undefined,
+    expirationDate: undefined,
+  }));
+  assert.equal(withoutDates.documentDate, null);
+  assert.equal(withoutDates.expirationDate, null);
+  assert.throws(() => normalizeDocumentPayload(validPayload({ documentDate: undefined })), (error) => error.field === "documentDate");
+  assert.throws(() => normalizeDocumentPayload(validPayload({ expirationDate: undefined })), (error) => error.field === "expirationDate");
+});
+
+test("Refresh GetLibros valida la sucursal y conserva el pais de la sesion", async () => {
+  const calls = [];
+  const service = createDocumentService({
+    async getBranchBooks(countryCode, branchId) {
+      calls.push({ countryCode, branchId });
+      return [{ assignmentId: 137 }];
+    },
+  });
+  assert.deepEqual(await service.branchBooks(4, "226"), [{ assignmentId: 137 }]);
+  assert.deepEqual(calls, [{ countryCode: 4, branchId: 226 }]);
   assert.throws(
-    () => normalizeDocumentPayload(validPayload({ isReferential: true, documentDate: undefined })),
-    (error) => error.field === "documentDate",
+    () => service.branchBooks(4, "0"),
+    (error) => error.status === 400 && error.field === "branchId",
   );
+});
+
+test("Aprobar exige Ref2 como Form1.Valid sin persistirlo en esa accion", async () => {
+  const calls = [];
+  const service = createDocumentService({
+    async setStatus(countryCode, userId, documentId, statusId) {
+      calls.push({ countryCode, userId, documentId, statusId });
+      return { id: documentId, statusId };
+    },
+  });
   assert.throws(
-    () => normalizeDocumentPayload(validPayload({ isReferential: true, expirationDate: undefined })),
-    (error) => error.field === "expirationDate",
+    () => service.approve(auth, 12, { secondaryReference: "" }),
+    (error) => error.status === 400 && error.field === "secondaryReference",
   );
+  assert.deepEqual(
+    await service.approve(auth, 12, { secondaryReference: "REF-2" }),
+    { id: 12, statusId: 2 },
+  );
+  assert.deepEqual(calls, [{ countryCode: 4, userId: 99, documentId: 12, statusId: 2 }]);
 });

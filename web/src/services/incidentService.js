@@ -24,6 +24,10 @@ export function getIncident(scope, incidentId) {
   return portalApiRequest({ path: `/incidents/${scope}/${incidentId}` });
 }
 
+export function getIncidentActionDetail(scope, incidentId, actionId) {
+  return portalApiRequest({ path: `/incidents/${scope}/${incidentId}/actions/${actionId}` });
+}
+
 export function createIncident(scope, body) {
   return portalApiRequest({ path: `/incidents/${scope}`, method: "POST", body });
 }

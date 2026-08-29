@@ -17,7 +17,7 @@ export class PasswordRecoveryValidationError extends Error {
 
 export class PasswordRecoveryNotFoundError extends Error {
   constructor() {
-    super("Credenciales incorrectas.");
+    super("Credenciales Incorrectas");
     this.name = "PasswordRecoveryNotFoundError";
     this.status = 400;
     this.code = "RECOVERY_IDENTITY_NOT_FOUND";
@@ -76,8 +76,8 @@ function normalizeRecoveryRequest(input = {}) {
 
 function normalizeNewPassword(value) {
   const password = typeof value === "string" ? value : "";
-  if (password.length < 8 || password.length > 256) {
-    throw new PasswordRecoveryValidationError("La clave debe contener entre 8 y 256 caracteres.", "password");
+  if (password.length > 128) {
+    throw new PasswordRecoveryValidationError("La clave no puede superar 128 caracteres.", "password");
   }
   return password;
 }
